@@ -17,6 +17,11 @@
 /.next/
 /out/
 
+# local data (Compose V2 + Comments)
+/data/published-posts.json
+/data/chats.json
+/data/approvals.json
+
 # production
 /build
 

@@ -1,12 +1,8 @@
 "use client";
 
-import {
-  registerTelegramWebhookAction,
-  syncTelegramWebhookFromNgrokAction,
-} from "@/app/actions/telegram-webhook";
-import { useEffect, useMemo, useState } from "react";
-
-type ApprovalUi = "idle" | "pending" | "approved" | "rejected" | "not_found";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 type NavId =
   | "dashboard"
@@ -21,78 +17,118 @@ const NAV: { id: NavId; label: string }[] = [
   { id: "compose", label: "Compose" },
   { id: "queue", label: "Queue" },
   { id: "approvals", label: "Approvals" },
-  { id: "orm", label: "ORM Monitor" },
   { id: "settings", label: "Settings" },
+  { id: "orm", label: "ORM Monitor" },
 ];
 
-export default function Home() {
+const TAB_IDS = new Set<NavId>([
+  "dashboard",
+  "compose",
+  "queue",
+  "approvals",
+  "orm",
+  "settings",
+]);
+
+type ApprovalTiming = "due" | "upcoming" | "published" | "rejected";
+
+type ScheduledApprovalRow = {
+  id: string;
+  chatId: string;
+  chatTitle: string;
+  postIndex: number;
+  label: string;
+  theme: string;
+  content: string;
+  scheduledDate: string;
+  status: "pending" | "published" | "rejected";
+  publishedAt: string | null;
+  linkedinPostId: string | null;
+  rejectedAt?: string | null;
+  isDue?: boolean;
+  timing?: ApprovalTiming;
+  daysUntil?: number;
+};
+
+function resolveApprovalTiming(a: ScheduledApprovalRow): ApprovalTiming {
+  if (a.timing) return a.timing;
+  if (a.status === "published") return "published";
+  if (a.status === "rejected") return "rejected";
+  if (a.isDue) return "due";
+  return "upcoming";
+}
+
+function upcomingCountdownLabel(daysUntil: number) {
+  if (daysUntil === 0) return "Due today";
+  if (daysUntil === 1) return "Tomorrow";
+  if (daysUntil < 7) return `In ${daysUntil} days`;
+  if (daysUntil < 30) return `In ${Math.ceil(daysUntil / 7)} weeks`;
+  return `In ${Math.ceil(daysUntil / 30)} months`;
+}
+
+function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [active, setActive] = useState<NavId>("dashboard");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && TAB_IDS.has(tab as NavId)) {
+      setActive(tab as NavId);
+    }
+  }, [searchParams]);
+
+  function goToTab(id: NavId) {
+    setActive(id);
+    router.replace(id === "dashboard" ? "/" : `/?tab=${id}`, { scroll: false });
+  }
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("");
   const [audience, setAudience] = useState("");
   const [generated, setGenerated] = useState("");
   const [loading, setLoading] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [setupMessage, setSetupMessage] = useState<string | null>(null);
   const [linkedinMessage, setLinkedinMessage] = useState<string | null>(null);
   const [ormUrn, setOrmUrn] = useState("");
   const [ormResult, setOrmResult] = useState<string | null>(null);
-  const [approvalDraftId, setApprovalDraftId] = useState<string | null>(null);
-  const [approvalUi, setApprovalUi] = useState<ApprovalUi>("idle");
-  const [approvalLinkedInPosted, setApprovalLinkedInPosted] = useState(false);
   const [localPublishDone, setLocalPublishDone] = useState(false);
-  const [composeNotice, setComposeNotice] = useState<string | null>(null);
+
+  const [approvals, setApprovals] = useState<ScheduledApprovalRow[]>([]);
+  const [approvalsFilter, setApprovalsFilter] = useState<
+    "all" | "due" | "upcoming" | "published" | "rejected"
+  >("all");
+  const [approvalActionId, setApprovalActionId] = useState<string | null>(null);
+  const [approvalsToast, setApprovalsToast] = useState<string | null>(null);
+  /** When set, Approvals list only shows rows for this chat id. */
+  const [approvalsChatIdFilter, setApprovalsChatIdFilter] = useState<string | null>(
+    null,
+  );
 
   const queueCount = 12;
 
   const publishDisabled = useMemo(() => {
     const hasPost = Boolean(generated.trim());
-    /** Publish only after Telegram Approve for this draft; stay off after reject / not_found / already posted. */
-    const blockedByApproval =
-      hasPost &&
-      (approvalUi !== "approved" ||
-        (approvalUi === "approved" &&
-          (approvalLinkedInPosted || localPublishDone)));
-    return loading || !hasPost || blockedByApproval;
-  }, [loading, generated, approvalUi, approvalLinkedInPosted, localPublishDone]);
+    return loading || !hasPost || localPublishDone;
+  }, [loading, generated, localPublishDone]);
+
+  const loadScheduledApprovals = useCallback(async () => {
+    try {
+      const res = await fetch("/api/approvals");
+      const data = (await res.json()) as {
+        success?: boolean;
+        approvals?: ScheduledApprovalRow[];
+      };
+      if (data.approvals) setApprovals(data.approvals);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
-    if (!approvalDraftId || approvalUi !== "pending") return;
-    const draftIdForPoll = approvalDraftId;
-
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch(
-          `/api/approval/status?draftId=${encodeURIComponent(draftIdForPoll)}`,
-        );
-        if (cancelled) return;
-        if (res.status === 404) {
-          setApprovalUi("not_found");
-          return;
-        }
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          status?: string;
-          linkedinPosted?: boolean;
-        };
-        if (data.status === "approved" || data.status === "rejected") {
-          setApprovalUi(data.status);
-          setApprovalLinkedInPosted(Boolean(data.linkedinPosted));
-        }
-      } catch {
-        /* ignore transient poll errors */
-      }
-    }
-
-    void poll();
-    const id = setInterval(poll, 2000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [approvalDraftId, approvalUi]);
+    if (active !== "approvals") return;
+    void loadScheduledApprovals();
+    const id = setInterval(() => void loadScheduledApprovals(), 60000);
+    return () => clearInterval(id);
+  }, [active, loadScheduledApprovals]);
 
   const stats = useMemo(
     () => [
@@ -108,10 +144,6 @@ export default function Home() {
     setLoading(true);
     setGenerated("");
     setLinkedinMessage(null);
-    setComposeNotice(null);
-    setApprovalDraftId(null);
-    setApprovalUi("idle");
-    setApprovalLinkedInPosted(false);
     setLocalPublishDone(false);
     try {
       const res = await fetch("/api/generate-post", {
@@ -142,7 +174,6 @@ export default function Home() {
 
   async function handlePublishLinkedIn() {
     if (!generated.trim()) return;
-    if (approvalUi !== "approved") return;
     setLoading(true);
     setLinkedinMessage(null);
     try {
@@ -158,7 +189,7 @@ export default function Home() {
         );
       }
       setLinkedinMessage("Posted to LinkedIn successfully.");
-      if (approvalDraftId) setLocalPublishDone(true);
+      setLocalPublishDone(true);
     } catch (e) {
       setLinkedinMessage(e instanceof Error ? e.message : "LinkedIn error");
     } finally {
@@ -166,71 +197,107 @@ export default function Home() {
     }
   }
 
-  async function registerTelegramWebhook() {
-    setSetupMessage(null);
-    if (!webhookUrl.trim()) {
-      setSetupMessage("Enter webhook URL.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await registerTelegramWebhookAction(webhookUrl.trim());
-      if (!result.ok) {
-        throw new Error(result.error);
-      }
-      setWebhookUrl(result.webhookUrl);
-      setSetupMessage("Telegram webhook registered.");
-    } catch (e) {
-      setSetupMessage(e instanceof Error ? e.message : "Error");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const dueCount = useMemo(
+    () => approvals.filter((a) => resolveApprovalTiming(a) === "due").length,
+    [approvals],
+  );
 
-  async function syncWebhookFromNgrok() {
-    setSetupMessage(null);
-    setLoading(true);
-    try {
-      const result = await syncTelegramWebhookFromNgrokAction();
-      if (!result.ok) {
-        throw new Error(result.error);
-      }
-      setWebhookUrl(result.webhookUrl);
-      setSetupMessage("Telegram webhook synced from ngrok.");
-    } catch (e) {
-      setSetupMessage(e instanceof Error ? e.message : "Error");
-    } finally {
-      setLoading(false);
-    }
-  }
+  type ApprovalsChatSummary = {
+    chatId: string;
+    chatTitle: string;
+    total: number;
+    due: number;
+    upcoming: number;
+    published: number;
+    rejected: number;
+  };
 
-  async function handleSendApproval() {
-    if (!generated) return;
-    setLoading(true);
-    setComposeNotice(null);
+  const approvalsByChat = useMemo((): ApprovalsChatSummary[] => {
+    const map = new Map<string, ApprovalsChatSummary>();
+    for (const a of approvals) {
+      const chatId = a.chatId;
+      const chatTitle = a.chatTitle?.trim() || "(untitled)";
+      let row = map.get(chatId);
+      if (!row) {
+        row = {
+          chatId,
+          chatTitle,
+          total: 0,
+          due: 0,
+          upcoming: 0,
+          published: 0,
+          rejected: 0,
+        };
+        map.set(chatId, row);
+      }
+      row.chatTitle = chatTitle;
+      row.total += 1;
+      const t = resolveApprovalTiming(a);
+      if (t === "due") row.due += 1;
+      else if (t === "upcoming") row.upcoming += 1;
+      else if (t === "published") row.published += 1;
+      else row.rejected += 1;
+    }
+    return [...map.values()].sort((x, y) => y.total - x.total);
+  }, [approvals]);
+
+  const filteredApprovals = useMemo(() => {
+    return approvals.filter((a) => {
+      if (approvalsChatIdFilter !== null && a.chatId !== approvalsChatIdFilter) {
+        return false;
+      }
+      const t = resolveApprovalTiming(a);
+      if (approvalsFilter === "all") return true;
+      if (approvalsFilter === "due") return t === "due";
+      if (approvalsFilter === "upcoming") return t === "upcoming";
+      if (approvalsFilter === "published") return t === "published";
+      return t === "rejected";
+    });
+  }, [approvals, approvalsFilter, approvalsChatIdFilter]);
+
+  async function approveScheduled(id: string) {
+    setApprovalActionId(id);
     try {
-      const res = await fetch("/api/approval/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: generated }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Send failed");
-      const id = typeof data.draftId === "string" ? data.draftId : "";
-      if (!id) throw new Error("Missing draft id");
-      setApprovalDraftId(id);
-      setApprovalUi("pending");
-      setApprovalLinkedInPosted(false);
-      setLocalPublishDone(false);
-      setComposeNotice(
-        `Sent to Telegram. Draft ${id.slice(0, 8)}… — pending approval.`,
+      const res = await fetch(
+        `/api/approvals/${encodeURIComponent(id)}/approve`,
+        { method: "POST" },
       );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed");
+      }
+      setApprovalsToast("Published to LinkedIn!");
+      await loadScheduledApprovals();
     } catch (e) {
-      setComposeNotice(e instanceof Error ? e.message : "Send failed");
+      setApprovalsToast(e instanceof Error ? e.message : "Failed");
     } finally {
-      setLoading(false);
+      setApprovalActionId(null);
     }
   }
+
+  async function rejectScheduled(id: string) {
+    if (!confirm("Reject this post?")) return;
+    try {
+      const res = await fetch(
+        `/api/approvals/${encodeURIComponent(id)}/reject`,
+        { method: "POST" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Failed");
+      }
+      setApprovalsToast("Post rejected.");
+      await loadScheduledApprovals();
+    } catch (e) {
+      setApprovalsToast(e instanceof Error ? e.message : "Failed");
+    }
+  }
+
+  useEffect(() => {
+    if (!approvalsToast) return;
+    const t = setTimeout(() => setApprovalsToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [approvalsToast]);
 
   async function fetchComments() {
     if (!ormUrn.trim()) return;
@@ -258,11 +325,43 @@ export default function Home() {
           <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
         </div>
         <nav className="flex flex-1 flex-col gap-1">
-          {NAV.map((item) => (
+          {NAV.slice(0, 2).map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => setActive(item.id)}
+              onClick={() => goToTab(item.id)}
+              className={`rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                active === item.id
+                  ? "bg-white/10 text-white"
+                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+          <Link
+            href="/compose-v2"
+            className="rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
+          >
+            <span className="mr-1.5 inline-block" aria-hidden>
+              🚀
+            </span>
+            Compose V2
+          </Link>
+          <Link
+            href="/comments"
+            className="rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
+          >
+            <span className="mr-1.5 inline-block" aria-hidden>
+              💬
+            </span>
+            Comments
+          </Link>
+          {NAV.slice(2).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => goToTab(item.id)}
               className={`rounded-lg px-3 py-2.5 text-left text-sm transition ${
                 active === item.id
                   ? "bg-white/10 text-white"
@@ -310,13 +409,8 @@ export default function Home() {
           <div className="mx-auto max-w-2xl">
             <h2 className="text-2xl font-semibold text-white">Compose</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Generate a post with Claude, then send it for Telegram approval.
-            </p>
-            <p className="mt-2 text-xs text-zinc-500">
-              Flow: Generate → Send to Telegram (Pending) → Approve in Telegram
-              (Approved) → Publish to LinkedIn unlocks. Publish stays disabled
-              until Approved. Set LINKEDIN_POST_ON_APPROVE=true in env to post
-              from Telegram on approve instead.
+              Generate a post with Claude, then publish to LinkedIn. For
+              multi-week plans and scheduled approvals, use Compose V2.
             </p>
             <label className="mt-6 block text-sm text-zinc-300">
               Topic / angle
@@ -359,92 +453,13 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                disabled={loading || !generated}
-                onClick={handleSendApproval}
-                className="rounded-lg border border-white/15 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-white/5 disabled:opacity-50"
-              >
-                Send to Telegram
-              </button>
-              <button
-                type="button"
                 disabled={publishDisabled}
-                title={
-                  publishDisabled && generated.trim() && approvalUi !== "approved"
-                    ? "Approve this draft in Telegram first"
-                    : undefined
-                }
                 onClick={handlePublishLinkedIn}
                 className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:opacity-50"
               >
                 Publish to LinkedIn now
               </button>
             </div>
-            {generated.trim() && (
-              <div
-                className={`mt-4 rounded-xl border p-4 text-sm ${
-                  approvalUi === "pending"
-                    ? "border-amber-500/35 bg-amber-950/25 text-amber-100/95"
-                    : approvalUi === "approved"
-                      ? "border-emerald-500/35 bg-emerald-950/25 text-emerald-100/95"
-                      : approvalUi === "rejected"
-                        ? "border-rose-500/35 bg-rose-950/25 text-rose-100/95"
-                        : "border-white/15 bg-[#11141b] text-zinc-300"
-                }`}
-              >
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                  Approval
-                </p>
-                <p className="mt-2 font-medium text-white">
-                  {approvalUi === "idle" && "Not sent to Telegram"}
-                  {approvalUi === "pending" && "Pending"}
-                  {approvalUi === "approved" && "Approved"}
-                  {approvalUi === "rejected" && "Rejected"}
-                  {approvalUi === "not_found" && "Draft not found"}
-                </p>
-                {approvalUi === "idle" && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    Tap Send to Telegram, then Approve in the chat. Publish stays
-                    disabled until Approved.
-                  </p>
-                )}
-                {approvalDraftId && (
-                  <p className="mt-1 font-mono text-xs text-zinc-500">
-                    {approvalDraftId}
-                  </p>
-                )}
-                {approvalUi === "pending" && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    Waiting for Approve or Reject in Telegram…
-                  </p>
-                )}
-                {approvalUi === "approved" && approvalLinkedInPosted && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    LinkedIn was already posted from Telegram (auto-post enabled).
-                  </p>
-                )}
-                {approvalUi === "approved" &&
-                  !approvalLinkedInPosted &&
-                  !localPublishDone && (
-                    <p className="mt-2 text-xs text-zinc-400">
-                      You can publish with Publish to LinkedIn now.
-                    </p>
-                  )}
-                {approvalUi === "approved" && localPublishDone && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    Published from this app.
-                  </p>
-                )}
-                {approvalUi === "not_found" && (
-                  <p className="mt-2 text-xs text-zinc-400">
-                    The server no longer has this draft (e.g. dev server
-                    restarted). Generate again and send to Telegram.
-                  </p>
-                )}
-              </div>
-            )}
-            {composeNotice && (
-              <p className="mt-3 text-sm text-zinc-300">{composeNotice}</p>
-            )}
             {linkedinMessage && (
               <p className="mt-3 text-sm text-zinc-300">{linkedinMessage}</p>
             )}
@@ -487,60 +502,217 @@ export default function Home() {
           <div className="mx-auto max-w-3xl">
             <h2 className="text-2xl font-semibold text-white">Approvals</h2>
             <p className="mt-2 text-sm text-zinc-400">
-              Approve or reject in Telegram. The bot replies in the chat with
-              Approved or Rejected. By default, LinkedIn is published from the
-              Compose tab after approval; set{" "}
-              <code className="text-zinc-500">LINKEDIN_POST_ON_APPROVE=true</code>{" "}
-              to post to LinkedIn immediately when you tap Approve.
+              Scheduled posts from Compose V2. Approve to publish directly to
+              LinkedIn, or reject to skip. This list refreshes every minute while
+              you stay on this tab.
             </p>
-            <p className="mt-3 text-sm text-zinc-500">
-              Telegram needs a public{" "}
-              <strong className="text-zinc-300">https</strong> URL. Run ngrok on
-              this PC (e.g. <code className="text-zinc-400">ngrok http 3000</code>
-              ), then <strong className="text-zinc-300">Sync from ngrok</strong>{" "}
-              — the server reads the tunnel from ngrok and registers the webhook
-              (uses <code className="text-zinc-400">TELEGRAM_BOT_TOKEN</code> from
-              env; no secret typed here). Or paste the full URL and use Register
-              (manual). Requires <code className="text-zinc-400">npm run dev</code>{" "}
-              and ngrok on the same machine.
-            </p>
-            <label className="mt-6 block text-sm text-zinc-300">
-              Webhook URL (must be https, end with{" "}
-              <code className="text-emerald-400/90">/api/approval/webhook</code>)
-              <input
-                type="url"
-                value={webhookUrl}
-                onChange={(e) => setWebhookUrl(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 font-mono text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
-                placeholder="https://your-subdomain.ngrok-free.app/api/approval/webhook"
-              />
-            </label>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={syncWebhookFromNgrok}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-              >
-                Sync webhook from ngrok
-              </button>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={registerTelegramWebhook}
-                className="rounded-lg border border-white/15 bg-transparent px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-white/5 disabled:opacity-50"
-              >
-                Register (manual URL)
-              </button>
-            </div>
-            <p className="mt-2 text-xs text-zinc-500">
-              CLI (uses <code className="text-zinc-400">TELEGRAM_WEBHOOK_SETUP_SECRET</code>{" "}
-              from <code className="text-zinc-400">.env</code>):{" "}
-              <code className="text-zinc-400">npm run webhook:sync</code>
-            </p>
-            {setupMessage && (
-              <p className="mt-3 text-sm text-zinc-300">{setupMessage}</p>
+            {approvalsByChat.length > 0 && (
+              <div className="mt-4 rounded-lg border border-white/10 bg-[#11141b]/80 px-3 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                  By chat
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setApprovalsChatIdFilter(null)}
+                    className={`rounded-full border px-3 py-1.5 text-left text-xs transition ${
+                      approvalsChatIdFilter === null
+                        ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-100"
+                        : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
+                    }`}
+                  >
+                    All chats
+                    <span className="ml-1 tabular-nums text-zinc-500">
+                      ({approvals.length})
+                    </span>
+                  </button>
+                  {approvalsByChat.map((s) => {
+                    const parts: string[] = [];
+                    if (s.due > 0) parts.push(`${s.due} due`);
+                    if (s.upcoming > 0) parts.push(`${s.upcoming} upcoming`);
+                    if (s.published > 0) parts.push(`${s.published} published`);
+                    if (s.rejected > 0) parts.push(`${s.rejected} rejected`);
+                    const detail = parts.length > 0 ? parts.join(" · ") : `${s.total} total`;
+                    const active = approvalsChatIdFilter === s.chatId;
+                    return (
+                      <button
+                        key={s.chatId}
+                        type="button"
+                        onClick={() => setApprovalsChatIdFilter(s.chatId)}
+                        title={detail}
+                        className={`max-w-[min(100%,18rem)] rounded-full border px-3 py-1.5 text-left text-xs transition ${
+                          active
+                            ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-100"
+                            : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
+                        }`}
+                      >
+                        <span className="font-medium text-zinc-200">&ldquo;{s.chatTitle}&rdquo;</span>
+                        <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                          {s.total} approvals — {detail}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
+            {approvalsToast && (
+              <p
+                className={`mt-3 text-sm ${
+                  approvalsToast.startsWith("Published") ||
+                  approvalsToast.startsWith("Post rejected")
+                    ? "text-emerald-300/90"
+                    : "text-rose-300/90"
+                }`}
+              >
+                {approvalsToast}
+              </p>
+            )}
+            <div className="mt-6 flex flex-wrap gap-2 border-b border-white/10 pb-3">
+              {(
+                [
+                  ["all", "All"],
+                  ["due", "Due Now"],
+                  ["upcoming", "Upcoming"],
+                  ["published", "Published"],
+                  ["rejected", "Rejected"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setApprovalsFilter(id)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    approvalsFilter === id
+                      ? "bg-emerald-600 text-white"
+                      : "bg-white/5 text-zinc-400 hover:bg-white/10"
+                  }`}
+                >
+                  {label}
+                  {id === "due" && dueCount > 0 ? (
+                    <span className="ml-1.5 inline-block min-w-[1.25rem] rounded-full bg-rose-600 px-1 text-center text-[10px] text-white">
+                      {dueCount}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+            <ul className="mt-6 space-y-4">
+              {filteredApprovals.length === 0 ? (
+                <li className="rounded-lg border border-white/10 bg-[#11141b] px-4 py-6 text-center text-sm text-zinc-500">
+                  No items in this view.
+                </li>
+              ) : (
+                filteredApprovals.map((a) => {
+                  const t = resolveApprovalTiming(a);
+                  const daysUntil = typeof a.daysUntil === "number" ? a.daysUntil : 0;
+                  const borderClass =
+                    t === "published"
+                      ? "border-emerald-500/45"
+                      : t === "rejected"
+                        ? "border-zinc-600/40"
+                        : t === "due"
+                          ? "border-rose-500/55"
+                          : "border-white/10";
+                  const mutedCard = t === "upcoming" ? " opacity-60 hover:opacity-80" : "";
+                  const badge =
+                    t === "published"
+                      ? { text: "Published", className: "bg-emerald-600/30 text-emerald-100" }
+                      : t === "rejected"
+                        ? { text: "Rejected", className: "bg-zinc-600/40 text-zinc-400" }
+                        : t === "due"
+                          ? { text: "DUE NOW", className: "bg-rose-600/40 text-rose-100" }
+                          : {
+                              text: upcomingCountdownLabel(daysUntil),
+                              className: "bg-white/[0.08] text-zinc-400",
+                            };
+                  let schedLabel: string;
+                  try {
+                    schedLabel = new Date(a.scheduledDate).toLocaleDateString("en-US", {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    });
+                  } catch {
+                    schedLabel = a.scheduledDate;
+                  }
+                  const preview =
+                    a.content.length > 150 ? `${a.content.slice(0, 150)}…` : a.content;
+                  return (
+                    <li
+                      key={a.id}
+                      className={`rounded-xl border bg-[#11141b] p-4 transition-opacity ${borderClass}${mutedCard}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${badge.className}`}
+                        >
+                          {badge.text}
+                        </span>
+                        <span className="text-xs font-medium uppercase text-zinc-500">
+                          {a.label}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-500">
+                        Topic:{" "}
+                        <span className="text-zinc-200">&ldquo;{a.chatTitle}&rdquo;</span>
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-300">
+                        <span className="text-zinc-500">Theme:</span> {a.theme}
+                      </p>
+                      <p className="mt-2 text-xs text-zinc-500">
+                        Scheduled: {schedLabel}
+                      </p>
+                      {t === "published" && a.publishedAt && (
+                        <p className="mt-1 text-xs text-emerald-400/90">
+                          Published{" "}
+                          {new Date(a.publishedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </p>
+                      )}
+                      <details className="mt-3 rounded-lg border border-white/10 bg-black/20">
+                        <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-zinc-400">
+                          Preview post
+                        </summary>
+                        <p className="border-t border-white/10 px-3 py-2 text-sm leading-relaxed text-zinc-300">
+                          {preview}
+                        </p>
+                      </details>
+                      {t === "due" && (
+                        <div className="mt-4 flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void rejectScheduled(a.id)}
+                            className="rounded-lg border border-white/15 px-4 py-2 text-sm text-zinc-200 hover:bg-white/5"
+                          >
+                            Reject
+                          </button>
+                          <button
+                            type="button"
+                            disabled={approvalActionId === a.id}
+                            onClick={() => void approveScheduled(a.id)}
+                            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                          >
+                            {approvalActionId === a.id
+                              ? "Publishing…"
+                              : "Approve & Publish"}
+                          </button>
+                        </div>
+                      )}
+                      {t === "upcoming" && (
+                        <p className="mt-4 text-right text-xs text-zinc-500">
+                          Scheduled for {schedLabel}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
           </div>
         )}
 
@@ -592,30 +764,24 @@ export default function Home() {
                 LINKEDIN_ACCESS_TOKEN — member token with w_member_social (+ profile
                 scopes)
               </li>
-              <li>
-                <code className="text-zinc-500">TELEGRAM_BOT_TOKEN</code> /{" "}
-                <code className="text-zinc-500">TELEGRAM_CHAT_ID</code> — bot + chat;
-                Next loads these as <code className="text-zinc-500">process.env</code>{" "}
-                on the server for sends, webhooks, and Approvals server actions
-              </li>
-              <li>
-                <code className="text-zinc-500">TELEGRAM_WEBHOOK_SETUP_SECRET</code>{" "}
-                — only for <code className="text-zinc-500">npm run webhook:sync</code>{" "}
-                and <code className="text-zinc-500">/api/telegram/webhook-setup</code>{" "}
-                / <code className="text-zinc-500">webhook-sync</code> (header{" "}
-                <code className="text-zinc-500">x-telegram-setup-secret</code>); not
-                used by the Approvals buttons
-              </li>
-              <li>
-                LINKEDIN_POST_ON_APPROVE — set to{" "}
-                <code className="text-zinc-500">true</code> to post to LinkedIn
-                when you tap Approve in Telegram; omit or leave unset to publish
-                from Compose only
-              </li>
             </ul>
           </div>
         )}
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[#0a0c10] text-sm text-zinc-400">
+          Loading…
+        </div>
+      }
+    >
+      <HomePage />
+    </Suspense>
   );
 }
