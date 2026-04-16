@@ -1,7 +1,6 @@
 "use client";
 
 import type { PublishedPostRecord } from "@/lib/published-posts-store";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const BG = "#0f0f0f";
@@ -9,19 +8,6 @@ const SURFACE = "#1a1a1a";
 const SURFACE2 = "#222";
 const ACCENT = "#0a66c2";
 const BORDER = "rgba(255,255,255,0.08)";
-const SIDEBAR_W = 220;
-
-const SIDEBAR_NAV: { href: string; label: string; icon: string }[] = [
-  { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/?tab=compose", label: "Compose", icon: "✏️" },
-  { href: "/compose-v2", label: "Compose V2", icon: "🚀" },
-  { href: "/comments", label: "Comments", icon: "💬" },
-  { href: "/?tab=queue", label: "Queue", icon: "📅" },
-  { href: "/?tab=approvals", label: "Approvals", icon: "✅" },
-  { href: "/?tab=settings", label: "Settings", icon: "⚙️" },
-  { href: "/?tab=orm", label: "ORM Monitor", icon: "◎" },
-];
-
 type CommentRow = {
   id: string;
   author: string;
@@ -236,7 +222,7 @@ export default function CommentsPage() {
 
   const toastBorder =
     toast?.variant === "success"
-      ? "border-emerald-500/40"
+      ? "border-[#0a66c2]/45"
       : toast?.variant === "error"
         ? "border-rose-500/40"
         : "border-white/10";
@@ -246,53 +232,6 @@ export default function CommentsPage() {
       className="flex min-h-screen text-zinc-100"
       style={{ backgroundColor: BG }}
     >
-      <aside
-        className="flex shrink-0 flex-col border-r border-white/10 px-3 py-6"
-        style={{ width: SIDEBAR_W, backgroundColor: SURFACE }}
-      >
-        <div className="mb-8 px-2">
-          <p
-            className="text-xs font-medium uppercase tracking-[0.2em]"
-            style={{ color: ACCENT }}
-          >
-            LinkedIn
-          </p>
-          <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
-        </div>
-        <nav className="flex flex-1 flex-col gap-0.5">
-          {SIDEBAR_NAV.map((item) => {
-            const active = item.href === "/comments";
-            return (
-              <Link
-                key={item.href + item.label}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                  active
-                    ? "font-medium text-white"
-                    : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-                }`}
-                style={
-                  active
-                    ? {
-                        borderLeft: `3px solid ${ACCENT}`,
-                        marginLeft: 0,
-                        paddingLeft: "calc(0.75rem - 3px)",
-                        backgroundColor: "rgba(10, 102, 194, 0.12)",
-                      }
-                    : { borderLeft: "3px solid transparent" }
-                }
-              >
-                <span className="text-base opacity-90">{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <p className="mt-auto px-2 text-xs text-zinc-500">
-          Configure keys in <code className="text-zinc-400">.env.local</code>
-        </p>
-      </aside>
-
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <div
           className="shrink-0 overflow-y-auto border-b md:w-[35%] md:max-w-[35%] md:border-b-0 md:border-r"

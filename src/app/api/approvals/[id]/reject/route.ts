@@ -1,4 +1,4 @@
-import { readChats, writeChats } from "@/lib/compose-v2-chats-store";
+import { updatePostInChat } from "@/lib/compose-v2-chats-store";
 import { getApprovalById, updateApproval } from "@/lib/scheduled-approvals-store";
 import { NextResponse } from "next/server";
 
@@ -9,27 +9,21 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const approval = getApprovalById(id);
+  const approval = await getApprovalById(id);
   if (!approval) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 
   const now = new Date().toISOString();
 
-  updateApproval(id, {
+  await updateApproval(id, {
     status: "rejected",
     rejectedAt: now,
   });
 
-  const chats = readChats();
-  const chat = chats.find((c) => c.id === approval.chatId);
-  if (chat) {
-    const post = chat.posts.find((p) => p.index === approval.postIndex);
-    if (post) {
-      post.status = "rejected";
-      writeChats(chats);
-    }
-  }
+  await updatePostInChat(approval.chatId, approval.postIndex, {
+    status: "rejected",
+  });
 
   return NextResponse.json({ success: true });
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { ApprovalPostEditor } from "@/components/approval-post-editor";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 type NavId =
@@ -11,15 +11,6 @@ type NavId =
   | "approvals"
   | "orm"
   | "settings";
-
-const NAV: { id: NavId; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "compose", label: "Compose" },
-  { id: "queue", label: "Queue" },
-  { id: "approvals", label: "Approvals" },
-  { id: "settings", label: "Settings" },
-  { id: "orm", label: "ORM Monitor" },
-];
 
 const TAB_IDS = new Set<NavId>([
   "dashboard",
@@ -36,6 +27,8 @@ type ScheduledApprovalRow = {
   id: string;
   chatId: string;
   chatTitle: string;
+  /** From API: chats.json + disambiguation when titles collide. */
+  displayChatTitle?: string;
   postIndex: number;
   label: string;
   theme: string;
@@ -66,22 +59,22 @@ function upcomingCountdownLabel(daysUntil: number) {
   return `In ${Math.ceil(daysUntil / 30)} months`;
 }
 
+const ACCENT_HOVER = "#1d8aff";
+
 function HomePage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [active, setActive] = useState<NavId>("dashboard");
 
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab && TAB_IDS.has(tab as NavId)) {
+    if (!tab || tab === "") {
+      setActive("dashboard");
+      return;
+    }
+    if (TAB_IDS.has(tab as NavId)) {
       setActive(tab as NavId);
     }
   }, [searchParams]);
-
-  function goToTab(id: NavId) {
-    setActive(id);
-    router.replace(id === "dashboard" ? "/" : `/?tab=${id}`, { scroll: false });
-  }
   const [topic, setTopic] = useState("");
   const [tone, setTone] = useState("");
   const [audience, setAudience] = useState("");
@@ -97,6 +90,9 @@ function HomePage() {
     "all" | "due" | "upcoming" | "published" | "rejected"
   >("all");
   const [approvalActionId, setApprovalActionId] = useState<string | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState<
+    Record<string, { dirty: boolean; saving: boolean }>
+  >({});
   const [approvalsToast, setApprovalsToast] = useState<string | null>(null);
   /** When set, Approvals list only shows rows for this chat id. */
   const [approvalsChatIdFilter, setApprovalsChatIdFilter] = useState<string | null>(
@@ -122,6 +118,18 @@ function HomePage() {
       /* ignore */
     }
   }, []);
+
+  const handleApprovalBusy = useCallback(
+    (id: string, s: { dirty: boolean; saving: boolean }) => {
+      setApprovalBusy((prev) => {
+        const next = { ...prev };
+        if (!s.dirty && !s.saving) delete next[id];
+        else next[id] = s;
+        return next;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (active !== "approvals") return;
@@ -216,7 +224,8 @@ function HomePage() {
     const map = new Map<string, ApprovalsChatSummary>();
     for (const a of approvals) {
       const chatId = a.chatId;
-      const chatTitle = a.chatTitle?.trim() || "(untitled)";
+      const chatTitle =
+        (a.displayChatTitle ?? a.chatTitle)?.trim() || "(untitled)";
       let row = map.get(chatId);
       if (!row) {
         row = {
@@ -316,68 +325,7 @@ function HomePage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0a0c10] text-zinc-100">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0c10] px-4 py-6">
-        <div className="mb-8 px-2">
-          <p className="text-xs font-medium uppercase tracking-[0.2em] text-emerald-400/90">
-            LinkedIn
-          </p>
-          <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
-        </div>
-        <nav className="flex flex-1 flex-col gap-1">
-          {NAV.slice(0, 2).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => goToTab(item.id)}
-              className={`rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                active === item.id
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-          <Link
-            href="/compose-v2"
-            className="rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
-          >
-            <span className="mr-1.5 inline-block" aria-hidden>
-              🚀
-            </span>
-            Compose V2
-          </Link>
-          <Link
-            href="/comments"
-            className="rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition hover:bg-white/5 hover:text-zinc-200"
-          >
-            <span className="mr-1.5 inline-block" aria-hidden>
-              💬
-            </span>
-            Comments
-          </Link>
-          {NAV.slice(2).map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => goToTab(item.id)}
-              className={`rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                active === item.id
-                  ? "bg-white/10 text-white"
-                  : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <p className="mt-auto px-2 text-xs text-zinc-500">
-          Configure keys in <code className="text-zinc-400">.env.local</code>
-        </p>
-      </aside>
-
-      <main className="flex-1 overflow-auto px-8 py-8">
+    <main className="min-h-0 flex-1 overflow-auto px-8 py-8">
         {active === "dashboard" && (
           <div className="mx-auto max-w-5xl">
             <header className="mb-8">
@@ -398,7 +346,7 @@ function HomePage() {
                   <p className="mt-3 text-3xl font-semibold tabular-nums text-white">
                     {s.value}
                   </p>
-                  <p className="mt-2 text-xs text-emerald-400/90">{s.delta}</p>
+                  <p className="mt-2 text-xs text-[#7cc4ff]/90">{s.delta}</p>
                 </div>
               ))}
             </div>
@@ -418,7 +366,7 @@ function HomePage() {
                 value={topic}
                 onChange={(e) => setTopic(e.target.value)}
                 rows={3}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
+                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-[#0a66c2]/35 focus:ring-2"
                 placeholder="e.g. Lessons from shipping our Q1 roadmap"
               />
             </label>
@@ -428,7 +376,7 @@ function HomePage() {
                 type="text"
                 value={tone}
                 onChange={(e) => setTone(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
+                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-[#0a66c2]/35 focus:ring-2"
                 placeholder="e.g. warm, concise"
               />
             </label>
@@ -438,7 +386,7 @@ function HomePage() {
                 type="text"
                 value={audience}
                 onChange={(e) => setAudience(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
+                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 text-sm text-zinc-100 outline-none ring-[#0a66c2]/35 focus:ring-2"
                 placeholder="e.g. hiring managers in healthcare"
               />
             </label>
@@ -447,7 +395,7 @@ function HomePage() {
                 type="button"
                 disabled={loading}
                 onClick={handleGenerate}
-                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                className="rounded-lg bg-[#0a66c2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d8aff] disabled:opacity-50"
               >
                 {loading ? "Working…" : "Generate post"}
               </button>
@@ -455,7 +403,7 @@ function HomePage() {
                 type="button"
                 disabled={publishDisabled}
                 onClick={handlePublishLinkedIn}
-                className="rounded-lg border border-emerald-500/40 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:opacity-50"
+                className="rounded-lg border border-[#0a66c2]/40 bg-[#0a66c2]/12 px-4 py-2 text-sm font-medium text-blue-100 hover:bg-[#0a66c2]/20 disabled:opacity-50"
               >
                 Publish to LinkedIn now
               </button>
@@ -517,7 +465,7 @@ function HomePage() {
                     onClick={() => setApprovalsChatIdFilter(null)}
                     className={`rounded-full border px-3 py-1.5 text-left text-xs transition ${
                       approvalsChatIdFilter === null
-                        ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-100"
+                        ? "border-[#0a66c2]/50 bg-[#0a66c2]/15 text-blue-100"
                         : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
                     }`}
                   >
@@ -542,7 +490,7 @@ function HomePage() {
                         title={detail}
                         className={`max-w-[min(100%,18rem)] rounded-full border px-3 py-1.5 text-left text-xs transition ${
                           active
-                            ? "border-emerald-500/50 bg-emerald-950/40 text-emerald-100"
+                            ? "border-[#0a66c2]/50 bg-[#0a66c2]/15 text-blue-100"
                             : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
                         }`}
                       >
@@ -561,7 +509,7 @@ function HomePage() {
                 className={`mt-3 text-sm ${
                   approvalsToast.startsWith("Published") ||
                   approvalsToast.startsWith("Post rejected")
-                    ? "text-emerald-300/90"
+                    ? "text-sky-300/90"
                     : "text-rose-300/90"
                 }`}
               >
@@ -584,7 +532,7 @@ function HomePage() {
                   onClick={() => setApprovalsFilter(id)}
                   className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                     approvalsFilter === id
-                      ? "bg-emerald-600 text-white"
+                      ? "bg-[#0a66c2] text-white"
                       : "bg-white/5 text-zinc-400 hover:bg-white/10"
                   }`}
                 >
@@ -608,7 +556,7 @@ function HomePage() {
                   const daysUntil = typeof a.daysUntil === "number" ? a.daysUntil : 0;
                   const borderClass =
                     t === "published"
-                      ? "border-emerald-500/45"
+                      ? "border-[#0a66c2]/50"
                       : t === "rejected"
                         ? "border-zinc-600/40"
                         : t === "due"
@@ -617,7 +565,7 @@ function HomePage() {
                   const mutedCard = t === "upcoming" ? " opacity-60 hover:opacity-80" : "";
                   const badge =
                     t === "published"
-                      ? { text: "Published", className: "bg-emerald-600/30 text-emerald-100" }
+                      ? { text: "Published", className: "bg-[#0a66c2]/30 text-blue-100" }
                       : t === "rejected"
                         ? { text: "Rejected", className: "bg-zinc-600/40 text-zinc-400" }
                         : t === "due"
@@ -637,8 +585,8 @@ function HomePage() {
                   } catch {
                     schedLabel = a.scheduledDate;
                   }
-                  const preview =
-                    a.content.length > 150 ? `${a.content.slice(0, 150)}…` : a.content;
+                  const busy = approvalBusy[a.id];
+                  const approveBlocked = Boolean(busy?.dirty || busy?.saving);
                   return (
                     <li
                       key={a.id}
@@ -656,7 +604,11 @@ function HomePage() {
                       </div>
                       <p className="mt-2 text-sm text-zinc-500">
                         Topic:{" "}
-                        <span className="text-zinc-200">&ldquo;{a.chatTitle}&rdquo;</span>
+                        <span className="text-zinc-200">
+                          &ldquo;
+                          {a.displayChatTitle ?? a.chatTitle}
+                          &rdquo;
+                        </span>
                       </p>
                       <p className="mt-1 text-sm text-zinc-300">
                         <span className="text-zinc-500">Theme:</span> {a.theme}
@@ -665,7 +617,7 @@ function HomePage() {
                         Scheduled: {schedLabel}
                       </p>
                       {t === "published" && a.publishedAt && (
-                        <p className="mt-1 text-xs text-emerald-400/90">
+                        <p className="mt-1 text-xs text-[#7cc4ff]/90">
                           Published{" "}
                           {new Date(a.publishedAt).toLocaleDateString("en-US", {
                             month: "short",
@@ -676,14 +628,23 @@ function HomePage() {
                       )}
                       <details className="mt-3 rounded-lg border border-white/10 bg-black/20">
                         <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-zinc-400">
-                          Preview post
+                          {a.status === "pending" ? "Preview & edit post" : "Preview post"}
                         </summary>
-                        <p className="border-t border-white/10 px-3 py-2 text-sm leading-relaxed text-zinc-300">
-                          {preview}
-                        </p>
+                        <ApprovalPostEditor
+                          approvalId={a.id}
+                          serverContent={a.content}
+                          canEdit={a.status === "pending"}
+                          onBusyChange={handleApprovalBusy}
+                          onSaved={loadScheduledApprovals}
+                        />
                       </details>
                       {t === "due" && (
-                        <div className="mt-4 flex justify-end gap-2">
+                        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                          {approveBlocked ? (
+                            <span className="mr-auto text-xs text-amber-200/80">
+                              Save the post (or discard edits) to enable publish.
+                            </span>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => void rejectScheduled(a.id)}
@@ -693,9 +654,14 @@ function HomePage() {
                           </button>
                           <button
                             type="button"
-                            disabled={approvalActionId === a.id}
+                            title={
+                              approveBlocked
+                                ? "Save changes before publishing"
+                                : undefined
+                            }
+                            disabled={approvalActionId === a.id || approveBlocked}
                             onClick={() => void approveScheduled(a.id)}
-                            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+                            className="rounded-lg bg-[#0a66c2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d8aff] disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {approvalActionId === a.id
                               ? "Publishing…"
@@ -728,7 +694,7 @@ function HomePage() {
               <input
                 value={ormUrn}
                 onChange={(e) => setOrmUrn(e.target.value)}
-                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 font-mono text-sm text-zinc-100 outline-none ring-emerald-500/30 focus:ring-2"
+                className="mt-2 w-full rounded-lg border border-white/10 bg-[#11141b] px-3 py-2 font-mono text-sm text-zinc-100 outline-none ring-[#0a66c2]/35 focus:ring-2"
                 placeholder="urn:li:activity:..."
               />
             </label>
@@ -736,7 +702,7 @@ function HomePage() {
               type="button"
               disabled={loading}
               onClick={fetchComments}
-              className="mt-4 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+              className="mt-4 rounded-lg bg-[#0a66c2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d8aff] disabled:opacity-50"
             >
               {loading ? "Loading…" : "Fetch comments"}
             </button>
@@ -767,8 +733,7 @@ function HomePage() {
             </ul>
           </div>
         )}
-      </main>
-    </div>
+    </main>
   );
 }
 

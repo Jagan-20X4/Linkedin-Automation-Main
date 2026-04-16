@@ -1,5 +1,4 @@
-import fs from "node:fs";
-import path from "node:path";
+import { getPool } from "@/lib/db";
 
 export type PublishedPostRecord = {
   id: string;
@@ -10,45 +9,62 @@ export type PublishedPostRecord = {
   publishedAt: string;
 };
 
-function dataFilePath(): string {
-  return path.join(process.cwd(), "data", "published-posts.json");
+export async function readPublishedPosts(): Promise<PublishedPostRecord[]> {
+  const pool = getPool();
+  const res = await pool.query<{
+    id: string;
+    linkedin_post_id: string;
+    content: string;
+    week: number | null;
+    theme: string | null;
+    published_at: Date;
+  }>(
+    `SELECT id, linkedin_post_id, content, week, theme, published_at FROM published_posts ORDER BY published_at ASC`,
+  );
+  return res.rows.map((r) => ({
+    id: r.id,
+    postId: r.linkedin_post_id,
+    content: r.content,
+    week: r.week,
+    theme: r.theme,
+    publishedAt:
+      r.published_at instanceof Date
+        ? r.published_at.toISOString()
+        : String(r.published_at),
+  }));
 }
 
-export function readPublishedPosts(): PublishedPostRecord[] {
-  const p = dataFilePath();
-  try {
-    if (!fs.existsSync(p)) return [];
-    const raw = fs.readFileSync(p, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((row): row is PublishedPostRecord => {
-      if (typeof row !== "object" || row === null) return false;
-      const r = row as Record<string, unknown>;
-      return typeof r.postId === "string" && r.postId.length > 0;
-    }) as PublishedPostRecord[];
-  } catch {
-    return [];
-  }
-}
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function appendPublishedPost(
+export async function appendPublishedPost(
   entry: Omit<PublishedPostRecord, "id" | "publishedAt"> & {
     id?: string;
     publishedAt?: string;
   },
-): PublishedPostRecord {
-  const dir = path.dirname(dataFilePath());
-  fs.mkdirSync(dir, { recursive: true });
-  const posts = readPublishedPosts();
-  const row: PublishedPostRecord = {
-    id: entry.id ?? `${Date.now()}`,
+): Promise<PublishedPostRecord> {
+  const pool = getPool();
+  const publishedAt = entry.publishedAt ?? new Date().toISOString();
+  const id =
+    entry.id && UUID_RE.test(entry.id) ? entry.id : crypto.randomUUID();
+  await pool.query(
+    `INSERT INTO published_posts (id, linkedin_post_id, content, week, theme, published_at)
+     VALUES ($1::uuid, $2, $3, $4, $5, $6::timestamptz)`,
+    [
+      id,
+      entry.postId,
+      entry.content,
+      entry.week ?? null,
+      entry.theme ?? null,
+      publishedAt,
+    ],
+  );
+  return {
+    id,
     postId: entry.postId,
     content: entry.content,
     week: entry.week ?? null,
     theme: entry.theme ?? null,
-    publishedAt: entry.publishedAt ?? new Date().toISOString(),
+    publishedAt,
   };
-  posts.push(row);
-  fs.writeFileSync(dataFilePath(), JSON.stringify(posts, null, 2), "utf8");
-  return row;
 }

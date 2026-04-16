@@ -4,6 +4,6 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const posts = readPublishedPosts();
+  const posts = await readPublishedPosts();
   return NextResponse.json({ success: true, posts: [...posts].reverse() });
 }

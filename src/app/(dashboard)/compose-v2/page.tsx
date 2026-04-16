@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -14,13 +13,14 @@ import {
 const BG = "#0f0f0f";
 const SURFACE = "#1a1a1a";
 const ACCENT = "#0a66c2";
-const SIDEBAR_W = 220;
 const CHAT_LIST_W = 280;
 const LS_CHAT_PANEL_VISIBLE = "chatPanelVisible";
 
 type ChatSummary = {
   id: string;
   title: string;
+  /** When two chats share the same title, includes a short id suffix. */
+  displayTitle?: string;
   durationType: "weeks" | "months";
   durationValue: number;
   postCount: number;
@@ -48,17 +48,6 @@ type ComposeChat = {
   createdAt: string;
   updatedAt?: string;
 };
-
-const SIDEBAR_NAV: { href: string; label: string; icon: string }[] = [
-  { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/?tab=compose", label: "Compose", icon: "✏️" },
-  { href: "/compose-v2", label: "Compose V2", icon: "🚀" },
-  { href: "/comments", label: "Comments", icon: "💬" },
-  { href: "/?tab=queue", label: "Queue", icon: "📅" },
-  { href: "/?tab=approvals", label: "Approvals", icon: "✅" },
-  { href: "/?tab=settings", label: "Settings", icon: "⚙️" },
-  { href: "/?tab=orm", label: "ORM Monitor", icon: "◎" },
-];
 
 type ToastState = { message: string; variant: "neutral" | "success" | "error" };
 
@@ -278,10 +267,22 @@ function ComposeV2Page() {
   async function handleDeleteChat(e: React.MouseEvent, chatId: string) {
     e.stopPropagation();
     if (!confirm("Delete this chat and all its scheduled posts?")) return;
-    await fetch(`/api/v2/chats/${encodeURIComponent(chatId)}`, { method: "DELETE" });
-    if (activeChat?.id === chatId) newChat();
-    await loadChatList();
-    showToast("Chat deleted.", "success");
+    try {
+      const res = await fetch(`/api/v2/chats/${encodeURIComponent(chatId)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(
+          typeof data.error === "string" ? data.error : "Could not delete chat.",
+        );
+      }
+      if (activeChat?.id === chatId) newChat();
+      await loadChatList();
+      showToast("Chat and its approvals removed.", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Delete failed", "error");
+    }
   }
 
   function togglePost(index: number) {
@@ -344,65 +345,28 @@ function ComposeV2Page() {
 
   const toastBorder =
     toast?.variant === "success"
-      ? "border-emerald-500/40"
+      ? "border-[#0a66c2]/45"
       : toast?.variant === "error"
         ? "border-rose-500/40"
         : "border-white/10";
 
   return (
     <div className="flex min-h-screen text-zinc-100" style={{ backgroundColor: BG }}>
-      <aside
-        className="flex shrink-0 flex-col border-r border-white/10 px-3 py-6"
-        style={{ width: SIDEBAR_W, backgroundColor: SURFACE }}
-      >
-        <div className="mb-8 flex items-start justify-between gap-2 px-2">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.2em]" style={{ color: ACCENT }}>
-              LinkedIn
-            </p>
-            <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
-          </div>
-          {!chatPanelVisible && (
-            <button
-              type="button"
-              title="Show chats"
-              onClick={() => toggleChatPanel(true)}
-              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/15 text-sm text-zinc-400 transition hover:border-[#0a66c2] hover:text-[#1d8aff]"
-            >
-              →
-            </button>
-          )}
+      {!chatPanelVisible && (
+        <div
+          className="flex shrink-0 flex-col border-r border-white/10 py-6 pl-2 pr-1"
+          style={{ width: 44, backgroundColor: SURFACE }}
+        >
+          <button
+            type="button"
+            title="Show chats"
+            onClick={() => toggleChatPanel(true)}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/15 text-sm text-zinc-400 transition hover:border-[#0a66c2] hover:text-[#1d8aff]"
+          >
+            →
+          </button>
         </div>
-        <nav className="flex flex-1 flex-col gap-0.5">
-          {SIDEBAR_NAV.map((item) => {
-            const isHere = item.href === "/compose-v2";
-            return (
-              <Link
-                key={item.href + item.label}
-                href={item.href}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                  isHere ? "font-medium text-white" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-                }`}
-                style={
-                  isHere
-                    ? {
-                        borderLeft: `3px solid ${ACCENT}`,
-                        paddingLeft: "calc(0.75rem - 3px)",
-                        backgroundColor: "rgba(10, 102, 194, 0.12)",
-                      }
-                    : { borderLeft: "3px solid transparent" }
-                }
-              >
-                <span className="text-base opacity-90">{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-        <p className="mt-auto px-2 text-xs text-zinc-500">
-          Configure keys in <code className="text-zinc-400">.env.local</code>
-        </p>
-      </aside>
+      )}
 
       <div className="flex min-w-0 flex-1">
         {chatPanelVisible && (
@@ -439,46 +403,54 @@ function ComposeV2Page() {
             <ul className="max-h-[calc(100vh-8rem)] space-y-1 overflow-y-auto pr-1">
               {allChats.map((c) => {
                 const isActive = activeChat?.id === c.id;
+                const listTitle = c.displayTitle ?? c.title;
                 const titleShort =
-                  c.title.length > 35 ? `${c.title.slice(0, 35)}…` : c.title;
+                  listTitle.length > 35 ? `${listTitle.slice(0, 35)}…` : listTitle;
                 return (
                   <li key={c.id}>
                     <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => void loadChat(c.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          void loadChat(c.id);
-                        }
-                      }}
-                      className={`group relative w-full cursor-pointer rounded-lg border border-transparent px-3 py-2.5 text-left transition hover:border-white/10 hover:bg-white/5 ${
+                      className={`flex w-full items-start gap-1 rounded-lg border border-transparent px-2 py-2 transition hover:border-white/10 hover:bg-white/5 ${
                         isActive ? "border-[#0a66c2]/40 bg-[#0a66c2]/15" : ""
                       }`}
                       style={
                         isActive
-                          ? { borderLeft: `3px solid ${ACCENT}`, paddingLeft: "calc(0.75rem - 3px)" }
+                          ? { borderLeft: `3px solid ${ACCENT}`, paddingLeft: "calc(0.5rem - 3px)" }
                           : {}
                       }
                     >
-                      <span className="block truncate text-sm font-medium text-zinc-100">{titleShort}</span>
-                      <span
-                        className="mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-                        style={{ backgroundColor: ACCENT }}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void loadChat(c.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            void loadChat(c.id);
+                          }
+                        }}
+                        className="min-w-0 flex-1 cursor-pointer rounded-md px-1 py-0.5 text-left outline-none ring-[#0a66c2]/30 focus-visible:ring-2"
                       >
-                        {durationBadge(c)}
-                      </span>
-                      <span className="mt-1 block text-[10px] text-zinc-500">
-                        {formatCreated(c.createdAt)}
-                      </span>
+                        <span className="block truncate text-sm font-medium text-zinc-100">
+                          {titleShort}
+                        </span>
+                        <span
+                          className="mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+                          style={{ backgroundColor: ACCENT }}
+                        >
+                          {durationBadge(c)}
+                        </span>
+                        <span className="mt-1 block text-[10px] text-zinc-500">
+                          {formatCreated(c.createdAt)}
+                        </span>
+                      </div>
                       <button
                         type="button"
-                        title="Delete chat"
+                        title="Delete chat and approvals"
+                        aria-label="Delete chat"
                         onClick={(e) => void handleDeleteChat(e, c.id)}
-                        className="absolute right-2 top-2 rounded p-1 text-zinc-500 opacity-0 transition hover:bg-white/10 hover:text-rose-300 group-hover:opacity-100"
+                        className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs font-medium text-zinc-400 transition hover:border-rose-500/40 hover:bg-rose-950/30 hover:text-rose-200"
                       >
-                        ×
+                        Delete
                       </button>
                     </div>
                   </li>
@@ -509,11 +481,21 @@ function ComposeV2Page() {
 
               <label className="mt-8 block text-sm font-medium text-zinc-300">
                 Topic / Strategy
+                {activeChat?.id ? (
+                  <span className="ml-2 text-xs font-normal text-zinc-500">
+                    (locked after this chat was created — use New Chat for a different topic)
+                  </span>
+                ) : null}
                 <textarea
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
+                  readOnly={Boolean(activeChat?.id)}
                   rows={6}
-                  className="mt-2 w-full resize-y rounded-lg border border-white/10 px-3 py-3 text-sm leading-relaxed text-zinc-100 outline-none ring-[#0a66c2]/30 focus:ring-2"
+                  className={`mt-2 w-full resize-y rounded-lg border border-white/10 px-3 py-3 text-sm leading-relaxed outline-none ring-[#0a66c2]/30 focus:ring-2 ${
+                    activeChat?.id
+                      ? "cursor-not-allowed text-zinc-400"
+                      : "text-zinc-100"
+                  }`}
                   style={{ minHeight: 160, backgroundColor: SURFACE }}
                   placeholder="Paste your topic, strategy document, campaign brief..."
                 />
@@ -561,7 +543,7 @@ function ComposeV2Page() {
 
               <button
                 type="button"
-                disabled={loading || !topic.trim()}
+                disabled={loading || (!activeChat?.id && !topic.trim())}
                 onClick={() => void handleGenerate()}
                 className="mt-4 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
                 style={{ backgroundColor: ACCENT }}
@@ -596,7 +578,9 @@ function ComposeV2Page() {
                       <button
                         type="button"
                         onClick={() => void handleGenerate()}
-                        disabled={loading || !topic.trim()}
+                        disabled={
+                          loading || (!activeChat?.id && !topic.trim())
+                        }
                         className="rounded-md border border-white/20 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/5 disabled:opacity-50"
                       >
                         Regenerate
@@ -638,7 +622,7 @@ function ComposeV2Page() {
                             </button>
                             <div className="flex shrink-0 flex-wrap items-center gap-2">
                               {p.status === "published" && (
-                                <span className="rounded-md bg-emerald-600/30 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-200">
+                                <span className="rounded-md bg-[#0a66c2]/35 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-100">
                                   Published
                                 </span>
                               )}

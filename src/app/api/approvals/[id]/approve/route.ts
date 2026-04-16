@@ -1,5 +1,5 @@
 import { appendPublishedPost } from "@/lib/published-posts-store";
-import { readChats, writeChats } from "@/lib/compose-v2-chats-store";
+import { updatePostInChat } from "@/lib/compose-v2-chats-store";
 import { publishLinkedInPost } from "@/lib/publish-linkedin";
 import {
   getApprovalById,
@@ -14,7 +14,7 @@ export async function POST(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const approval = getApprovalById(id);
+  const approval = await getApprovalById(id);
   if (!approval) {
     return NextResponse.json({ error: "Approval not found." }, { status: 404 });
   }
@@ -41,26 +41,20 @@ export async function POST(
     typeof data?.id === "string" ? data.id : JSON.stringify(result.data ?? {});
   const now = new Date().toISOString();
 
-  updateApproval(id, {
+  await updateApproval(id, {
     status: "published",
     publishedAt: now,
     linkedinPostId: postId,
   });
 
-  const chats = readChats();
-  const chat = chats.find((c) => c.id === approval.chatId);
-  if (chat) {
-    const post = chat.posts.find((p) => p.index === approval.postIndex);
-    if (post) {
-      post.status = "published";
-      post.linkedinPostId = postId;
-      post.publishedAt = now;
-      writeChats(chats);
-    }
-  }
+  await updatePostInChat(approval.chatId, approval.postIndex, {
+    status: "published",
+    publishedAt: now,
+    linkedinPostId: postId,
+  });
 
   try {
-    appendPublishedPost({
+    await appendPublishedPost({
       postId,
       content: approval.content,
       week: approval.postIndex,

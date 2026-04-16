@@ -1,5 +1,4 @@
 import { deleteChatById, getChatById } from "@/lib/compose-v2-chats-store";
-import { removeApprovalsForChat } from "@/lib/scheduled-approvals-store";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -9,7 +8,7 @@ export async function GET(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  const chat = getChatById(id);
+  const chat = await getChatById(id);
   if (!chat) {
     return NextResponse.json({ error: "Chat not found." }, { status: 404 });
   }
@@ -21,9 +20,8 @@ export async function DELETE(
   ctx: { params: Promise<{ id: string }> },
 ) {
   const { id } = await ctx.params;
-  if (!deleteChatById(id)) {
+  if (!(await deleteChatById(id))) {
     return NextResponse.json({ error: "Chat not found." }, { status: 404 });
   }
-  removeApprovalsForChat(id);
   return NextResponse.json({ success: true });
 }

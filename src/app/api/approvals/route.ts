@@ -1,3 +1,5 @@
+import { readChats } from "@/lib/compose-v2-chats-store";
+import { disambiguateLabels } from "@/lib/chat-display-label";
 import type { ScheduledApprovalItem } from "@/lib/scheduled-approvals-store";
 import { readScheduledApprovals } from "@/lib/scheduled-approvals-store";
 import { NextResponse } from "next/server";
@@ -10,10 +12,38 @@ export type EnrichedScheduledApproval = ScheduledApprovalItem & {
   isDue: boolean;
   timing: ApprovalTiming;
   daysUntil: number;
+  /** Normalized from chats.json + disambiguated when titles collide. */
+  displayChatTitle: string;
 };
 
-function enrichApprovals(): EnrichedScheduledApproval[] {
-  const approvals = readScheduledApprovals();
+async function enrichApprovals(): Promise<EnrichedScheduledApproval[]> {
+  const [approvals, chats] = await Promise.all([
+    readScheduledApprovals(),
+    readChats(),
+  ]);
+  const titleFromChats = new Map(
+    chats.map((c) => [c.id, (c.title?.trim() || c.topic?.trim() || "(untitled)") as string]),
+  );
+  const fallbackTitleByChat = new Map<string, string>();
+  for (const a of approvals) {
+    if (!fallbackTitleByChat.has(a.chatId)) {
+      fallbackTitleByChat.set(
+        a.chatId,
+        (a.chatTitle?.trim() || "(untitled)") as string,
+      );
+    }
+  }
+  const chatIdsOrdered: string[] = [];
+  const seen = new Set<string>();
+  for (const a of approvals) {
+    if (!seen.has(a.chatId)) {
+      seen.add(a.chatId);
+      chatIdsOrdered.push(a.chatId);
+    }
+  }
+  const displayByChatId = disambiguateLabels(chatIdsOrdered, (id) => {
+    return titleFromChats.get(id) ?? fallbackTitleByChat.get(id) ?? "(untitled)";
+  });
   const now = new Date();
 
   return approvals.map((a) => {
@@ -32,12 +62,15 @@ function enrichApprovals(): EnrichedScheduledApproval[] {
       isDue: timing === "due",
       timing,
       daysUntil: diffDays > 0 ? diffDays : 0,
+      displayChatTitle:
+        displayByChatId.get(a.chatId) ??
+        (a.chatTitle?.trim() || "(untitled)"),
     };
   });
 }
 
 export async function GET() {
-  const enriched = enrichApprovals();
+  const enriched = await enrichApprovals();
   const order: Record<ApprovalTiming, number> = {
     due: 0,
     upcoming: 1,

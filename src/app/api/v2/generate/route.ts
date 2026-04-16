@@ -1,10 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlock } from "@anthropic-ai/sdk/resources/messages";
 import type { ComposeV2Chat, ComposeV2Post } from "@/lib/compose-v2-chats-store";
-import { readChats, writeChats } from "@/lib/compose-v2-chats-store";
+import {
+  getChatById,
+  readChats,
+  saveChatWithPostsClient,
+} from "@/lib/compose-v2-chats-store";
 import { calculateScheduledDates } from "@/lib/compose-v2-schedule";
+import { withTransaction } from "@/lib/db";
 import type { ScheduledApprovalItem } from "@/lib/scheduled-approvals-store";
-import { replacePendingApprovalsForChat } from "@/lib/scheduled-approvals-store";
+import { replacePendingApprovalsForChatClient } from "@/lib/scheduled-approvals-store";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -38,10 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const topic = body.topic?.trim();
-  if (!topic) {
-    return NextResponse.json({ error: "Topic is required." }, { status: 400 });
-  }
+  const topicFromBody = body.topic?.trim() ?? "";
 
   const durationType = body.durationType;
   if (durationType !== "weeks" && durationType !== "months") {
@@ -67,6 +69,25 @@ export async function POST(req: Request) {
   const anthropic = new Anthropic({ apiKey: key });
   const model =
     process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
+
+  const chatsForTopic = await readChats();
+  const existingIdForTopic =
+    typeof body.chatId === "string" && body.chatId.trim()
+      ? body.chatId.trim()
+      : null;
+  const existingChatForTopic = existingIdForTopic
+    ? chatsForTopic.find((c) => c.id === existingIdForTopic)
+    : undefined;
+
+  /** New chats require a topic; existing chats keep the stored strategy (not the request body). */
+  const topic =
+    (existingChatForTopic &&
+      (existingChatForTopic.topic?.trim() ||
+        existingChatForTopic.title?.trim())) ||
+    topicFromBody;
+  if (!topic) {
+    return NextResponse.json({ error: "Topic is required." }, { status: 400 });
+  }
 
   const prompt = `You are a LinkedIn content strategist. Based on the topic/strategy below, generate a structured ${durationValue}-${unitPlural} LinkedIn post plan.
 
@@ -162,10 +183,6 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
       };
     });
 
-    const title =
-      topic.length > 40 ? `${topic.slice(0, 40)}…` : topic;
-
-    const chats = readChats();
     let chat: ComposeV2Chat;
 
     const existingId =
@@ -174,21 +191,20 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
         : null;
 
     if (existingId) {
-      const idx = chats.findIndex((c) => c.id === existingId);
-      if (idx === -1) {
+      const prev = await getChatById(existingId);
+      if (!prev) {
         return NextResponse.json({ error: "Chat not found." }, { status: 404 });
       }
       chat = {
-        ...chats[idx],
-        topic,
+        ...prev,
         durationType,
         durationValue,
         posts,
         updatedAt: createdAt,
       };
-      chats[idx] = chat;
-      writeChats(chats);
     } else {
+      const title =
+        topic.length > 40 ? `${topic.slice(0, 40)}…` : topic;
       chat = {
         id: crypto.randomUUID(),
         title,
@@ -198,8 +214,6 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
         posts,
         createdAt,
       };
-      chats.push(chat);
-      writeChats(chats);
     }
 
     const approvalItems: ScheduledApprovalItem[] = posts.map((p) => ({
@@ -215,7 +229,11 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
       publishedAt: null,
       linkedinPostId: null,
     }));
-    replacePendingApprovalsForChat(chat.id, approvalItems);
+
+    await withTransaction(async (c) => {
+      await saveChatWithPostsClient(c, chat);
+      await replacePendingApprovalsForChatClient(c, chat.id, approvalItems);
+    });
 
     return NextResponse.json({ success: true, chat });
   } catch (e) {

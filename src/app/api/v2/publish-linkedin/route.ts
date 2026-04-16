@@ -1,5 +1,5 @@
 import { appendPublishedPost } from "@/lib/published-posts-store";
-import { getChatById, readChats, writeChats } from "@/lib/compose-v2-chats-store";
+import { getChatById, updatePostInChat } from "@/lib/compose-v2-chats-store";
 import { publishLinkedInPost } from "@/lib/publish-linkedin";
 import { updateApprovalByChatPost } from "@/lib/scheduled-approvals-store";
 import { NextResponse } from "next/server";
@@ -58,18 +58,12 @@ export async function POST(req: Request) {
   const now = new Date().toISOString();
 
   if (chatId && !Number.isNaN(postIndex)) {
-    const chats = readChats();
-    const chat = chats.find((c) => c.id === chatId);
-    if (chat) {
-      const post = chat.posts.find((p) => p.index === postIndex);
-      if (post) {
-        post.status = "published";
-        post.linkedinPostId = postId;
-        post.publishedAt = now;
-        writeChats(chats);
-      }
-    }
-    updateApprovalByChatPost(chatId, postIndex, {
+    await updatePostInChat(chatId, postIndex, {
+      status: "published",
+      publishedAt: now,
+      linkedinPostId: postId,
+    });
+    await updateApprovalByChatPost(chatId, postIndex, {
       status: "published",
       publishedAt: now,
       linkedinPostId: postId,
@@ -85,7 +79,7 @@ export async function POST(req: Request) {
       ? body.theme.trim()
       : null;
   if (chatId && !Number.isNaN(postIndex)) {
-    const chat = getChatById(chatId);
+    const chat = await getChatById(chatId);
     const post = chat?.posts.find((p) => p.index === postIndex);
     if (post) {
       week = postIndex;
@@ -94,7 +88,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    appendPublishedPost({
+    await appendPublishedPost({
       postId,
       content: text,
       week,
