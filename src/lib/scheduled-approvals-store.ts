@@ -1,5 +1,10 @@
 import type { PoolClient } from "pg";
 import { getPool, withTransaction } from "@/lib/db";
+import {
+  normalizeImagesFromDb,
+  primaryImageUrl,
+  imagesToJsonbValue,
+} from "@/lib/post-images";
 
 export type ScheduledApprovalItem = {
   id: string;
@@ -14,6 +19,9 @@ export type ScheduledApprovalItem = {
   publishedAt: string | null;
   linkedinPostId: string | null;
   rejectedAt?: string | null;
+  images: string[];
+  imageUrl?: string | null;
+  imagePrompt?: string | null;
 };
 
 function mapApprovalRow(r: {
@@ -29,7 +37,11 @@ function mapApprovalRow(r: {
   published_at: Date | null;
   linkedin_post_id: string | null;
   rejected_at: Date | null;
+  image_url: string | null;
+  image_prompt: string | null;
+  images: unknown;
 }): ScheduledApprovalItem {
+  const images = normalizeImagesFromDb(r.images, r.image_url);
   return {
     id: r.id,
     chatId: r.chat_id,
@@ -54,6 +66,9 @@ function mapApprovalRow(r: {
         ? r.rejected_at.toISOString()
         : String(r.rejected_at)
       : null,
+    images,
+    imageUrl: primaryImageUrl(images),
+    imagePrompt: r.image_prompt ?? null,
   };
 }
 
@@ -72,8 +87,11 @@ export async function readScheduledApprovals(): Promise<ScheduledApprovalItem[]>
     published_at: Date | null;
     linkedin_post_id: string | null;
     rejected_at: Date | null;
+    image_url: string | null;
+    image_prompt: string | null;
+    images: unknown;
   }>(
-    `SELECT id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at
+    `SELECT id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at, image_url, image_prompt, images
      FROM scheduled_approvals`,
   );
   return res.rows.map(mapApprovalRow);
@@ -104,9 +122,16 @@ export async function replacePendingApprovalsForChatClient(
     [chatId],
   );
   for (const a of newItems) {
+    const imgs =
+      Array.isArray(a.images) && a.images.length > 0
+        ? a.images
+        : a.imageUrl?.trim()
+          ? [a.imageUrl.trim()]
+          : [];
+    const imageUrlFirst = primaryImageUrl(imgs);
     await client.query(
-      `INSERT INTO scheduled_approvals (id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10::timestamptz, $11, $12::timestamptz)`,
+      `INSERT INTO scheduled_approvals (id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at, image_url, image_prompt, images)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10::timestamptz, $11, $12::timestamptz, $13, $14, $15::jsonb)`,
       [
         a.id,
         a.chatId,
@@ -120,6 +145,9 @@ export async function replacePendingApprovalsForChatClient(
         a.publishedAt,
         a.linkedinPostId,
         a.rejectedAt ?? null,
+        imageUrlFirst,
+        a.imagePrompt ?? null,
+        imagesToJsonbValue(imgs),
       ],
     );
   }
@@ -142,8 +170,11 @@ export async function getApprovalById(
     published_at: Date | null;
     linkedin_post_id: string | null;
     rejected_at: Date | null;
+    image_url: string | null;
+    image_prompt: string | null;
+    images: unknown;
   }>(
-    `SELECT id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at
+    `SELECT id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at, image_url, image_prompt, images
      FROM scheduled_approvals WHERE id = $1::uuid`,
     [id],
   );
@@ -199,6 +230,21 @@ export async function updateApproval(
     sets.push(`rejected_at = $${n++}`);
     values.push(patch.rejectedAt);
   }
+  if (patch.images === undefined && patch.imageUrl !== undefined) {
+    sets.push(`image_url = $${n++}`);
+    values.push(patch.imageUrl);
+  }
+  if (patch.imagePrompt !== undefined) {
+    sets.push(`image_prompt = $${n++}`);
+    values.push(patch.imagePrompt);
+  }
+  if (patch.images !== undefined) {
+    const imgs = patch.images;
+    sets.push(`images = $${n++}::jsonb`);
+    values.push(imagesToJsonbValue(imgs));
+    sets.push(`image_url = $${n++}`);
+    values.push(primaryImageUrl(imgs));
+  }
   if (sets.length === 0) return false;
   const res = await pool.query(
     `UPDATE scheduled_approvals SET ${sets.join(", ")} WHERE id = $1::uuid`,
@@ -252,10 +298,55 @@ export async function updateApprovalByChatPost(
     sets.push(`rejected_at = $${n++}`);
     values.push(patch.rejectedAt);
   }
+  if (patch.images === undefined && patch.imageUrl !== undefined) {
+    sets.push(`image_url = $${n++}`);
+    values.push(patch.imageUrl);
+  }
+  if (patch.imagePrompt !== undefined) {
+    sets.push(`image_prompt = $${n++}`);
+    values.push(patch.imagePrompt);
+  }
+  if (patch.images !== undefined) {
+    const imgs = patch.images;
+    sets.push(`images = $${n++}::jsonb`);
+    values.push(imagesToJsonbValue(imgs));
+    sets.push(`image_url = $${n++}`);
+    values.push(primaryImageUrl(imgs));
+  }
   if (sets.length === 0) return false;
   const res = await pool.query(
     `UPDATE scheduled_approvals SET ${sets.join(", ")} WHERE chat_id = $1::uuid AND post_index = $2`,
     values,
   );
   return res.rowCount !== null && res.rowCount > 0;
+}
+
+/** Keep pending approval images aligned with compose_v2_posts after image edits. */
+export async function syncPendingApprovalImagesFromPost(
+  chatId: string,
+  postIndex: number,
+  images: string[],
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE scheduled_approvals
+     SET images = $3::jsonb, image_url = $4
+     WHERE chat_id = $1::uuid AND post_index = $2 AND status = 'pending'`,
+    [chatId, postIndex, imagesToJsonbValue(images), primaryImageUrl(images)],
+  );
+}
+
+/** Keep compose_v2_posts images aligned with scheduled_approvals after approval image edits. */
+export async function syncPendingPostImagesFromApproval(
+  chatId: string,
+  postIndex: number,
+  images: string[],
+): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE compose_v2_posts
+     SET images = $3::jsonb, image_url = $4
+     WHERE chat_id = $1::uuid AND post_index = $2`,
+    [chatId, postIndex, imagesToJsonbValue(images), primaryImageUrl(images)],
+  );
 }

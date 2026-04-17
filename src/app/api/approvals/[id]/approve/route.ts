@@ -22,7 +22,10 @@ export async function POST(
     return NextResponse.json({ error: "Already published." }, { status: 400 });
   }
 
-  const result = await publishLinkedInPost(approval.content);
+  const imageDataUrls = (approval.images ?? []).filter((u) =>
+    typeof u === "string" && u.trim().startsWith("data:image/"),
+  );
+  const result = await publishLinkedInPost(approval.content, imageDataUrls);
   if (!result.ok) {
     return NextResponse.json(
       {

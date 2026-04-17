@@ -28,6 +28,9 @@ CREATE TABLE compose_v2_posts (
   status TEXT NOT NULL CHECK (status IN ('pending', 'published', 'rejected')),
   published_at TIMESTAMPTZ,
   linkedin_post_id TEXT,
+  image_url TEXT,
+  image_prompt TEXT,
+  images JSONB NOT NULL DEFAULT '[]'::jsonb,
   CONSTRAINT uq_compose_v2_posts_chat_index UNIQUE (chat_id, post_index)
 );
 
@@ -45,7 +48,10 @@ CREATE TABLE scheduled_approvals (
   status TEXT NOT NULL CHECK (status IN ('pending', 'published', 'rejected')),
   published_at TIMESTAMPTZ,
   linkedin_post_id TEXT,
-  rejected_at TIMESTAMPTZ
+  rejected_at TIMESTAMPTZ,
+  image_url TEXT,
+  image_prompt TEXT,
+  images JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE INDEX idx_scheduled_approvals_chat_id ON scheduled_approvals (chat_id);
@@ -61,3 +67,25 @@ CREATE TABLE published_posts (
 );
 
 CREATE INDEX idx_published_posts_published_at ON published_posts (published_at DESC);
+
+-- Existing databases: add FLUX image columns (safe to re-run).
+ALTER TABLE compose_v2_posts ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE compose_v2_posts ADD COLUMN IF NOT EXISTS image_prompt TEXT;
+ALTER TABLE scheduled_approvals ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE scheduled_approvals ADD COLUMN IF NOT EXISTS image_prompt TEXT;
+
+-- Multi-image JSON arrays (safe to re-run).
+ALTER TABLE compose_v2_posts ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE scheduled_approvals ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+UPDATE compose_v2_posts
+SET images = jsonb_build_array(trim(image_url))
+WHERE image_url IS NOT NULL
+  AND trim(image_url) <> ''
+  AND jsonb_array_length(COALESCE(images, '[]'::jsonb)) = 0;
+
+UPDATE scheduled_approvals
+SET images = jsonb_build_array(trim(image_url))
+WHERE image_url IS NOT NULL
+  AND trim(image_url) <> ''
+  AND jsonb_array_length(COALESCE(images, '[]'::jsonb)) = 0;

@@ -26,6 +26,9 @@ type JsonChat = {
     status: string;
     publishedAt?: string | null;
     linkedinPostId?: string | null;
+    images?: string[] | null;
+    imageUrl?: string | null;
+    imagePrompt?: string | null;
   }>;
   createdAt: string;
   updatedAt?: string;
@@ -44,6 +47,9 @@ type JsonApproval = {
   publishedAt: string | null;
   linkedinPostId: string | null;
   rejectedAt?: string | null;
+  images?: string[] | null;
+  imageUrl?: string | null;
+  imagePrompt?: string | null;
 };
 
 type JsonPublished = {
@@ -82,9 +88,18 @@ async function importChats(client: PoolClient, chats: JsonChat[]) {
       ],
     );
     for (const p of c.posts ?? []) {
+      const imgs =
+        Array.isArray(p.images) && p.images.length > 0
+          ? p.images.filter(
+              (x): x is string => typeof x === "string" && x.trim().length > 0,
+            )
+          : p.imageUrl?.trim()
+            ? [p.imageUrl.trim()]
+            : [];
+      const imageUrlFirst = imgs[0] ?? null;
       await client.query(
-        `INSERT INTO compose_v2_posts (chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id)
-         VALUES ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7, $8::timestamptz, $9)
+        `INSERT INTO compose_v2_posts (chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, image_url, image_prompt, images)
+         VALUES ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7, $8::timestamptz, $9, $10, $11, $12::jsonb)
          ON CONFLICT (chat_id, post_index) DO NOTHING`,
         [
           c.id,
@@ -96,6 +111,9 @@ async function importChats(client: PoolClient, chats: JsonChat[]) {
           p.status,
           p.publishedAt ?? null,
           p.linkedinPostId ?? null,
+          imageUrlFirst,
+          p.imagePrompt ?? null,
+          JSON.stringify(imgs),
         ],
       );
     }
@@ -104,9 +122,18 @@ async function importChats(client: PoolClient, chats: JsonChat[]) {
 
 async function importApprovals(client: PoolClient, rows: JsonApproval[]) {
   for (const a of rows) {
+    const imgs =
+      Array.isArray(a.images) && a.images.length > 0
+        ? a.images.filter(
+            (x): x is string => typeof x === "string" && x.trim().length > 0,
+          )
+        : a.imageUrl?.trim()
+          ? [a.imageUrl.trim()]
+          : [];
+    const imageUrlFirst = imgs[0] ?? null;
     await client.query(
-      `INSERT INTO scheduled_approvals (id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10::timestamptz, $11, $12::timestamptz)
+      `INSERT INTO scheduled_approvals (id, chat_id, chat_title, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, rejected_at, image_url, image_prompt, images)
+       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10::timestamptz, $11, $12::timestamptz, $13, $14, $15::jsonb)
        ON CONFLICT (id) DO NOTHING`,
       [
         a.id,
@@ -121,6 +148,9 @@ async function importApprovals(client: PoolClient, rows: JsonApproval[]) {
         a.publishedAt,
         a.linkedinPostId,
         a.rejectedAt ?? null,
+        imageUrlFirst,
+        a.imagePrompt ?? null,
+        JSON.stringify(imgs),
       ],
     );
   }

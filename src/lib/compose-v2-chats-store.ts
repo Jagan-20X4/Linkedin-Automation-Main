@@ -1,5 +1,10 @@
 import type { PoolClient } from "pg";
 import { getPool, withTransaction } from "@/lib/db";
+import {
+  normalizeImagesFromDb,
+  primaryImageUrl,
+  imagesToJsonbValue,
+} from "@/lib/post-images";
 
 export type ComposeV2Post = {
   index: number;
@@ -10,6 +15,11 @@ export type ComposeV2Post = {
   status: "pending" | "published" | "rejected";
   publishedAt?: string | null;
   linkedinPostId?: string | null;
+  /** Data URLs (base64) for this post; canonical list for UI + LinkedIn. */
+  images: string[];
+  /** First image; kept in sync with images[0] for legacy readers. */
+  imageUrl?: string | null;
+  imagePrompt?: string | null;
 };
 
 export type ComposeV2Chat = {
@@ -32,7 +42,11 @@ function mapPostRow(r: {
   status: string;
   published_at: Date | null;
   linkedin_post_id: string | null;
+  image_url: string | null;
+  image_prompt: string | null;
+  images: unknown;
 }): ComposeV2Post {
+  const images = normalizeImagesFromDb(r.images, r.image_url);
   return {
     index: r.post_index,
     label: r.label,
@@ -49,6 +63,9 @@ function mapPostRow(r: {
         : String(r.published_at)
       : null,
     linkedinPostId: r.linkedin_post_id,
+    images,
+    imageUrl: primaryImageUrl(images),
+    imagePrompt: r.image_prompt ?? null,
   };
 }
 
@@ -97,8 +114,11 @@ async function loadPostsForChatIds(
     status: string;
     published_at: Date | null;
     linkedin_post_id: string | null;
+    image_url: string | null;
+    image_prompt: string | null;
+    images: unknown;
   }>(
-    `SELECT chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id
+    `SELECT chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, image_url, image_prompt, images
      FROM compose_v2_posts WHERE chat_id = ANY($1::uuid[]) ORDER BY chat_id, post_index`,
     [chatIds],
   );
@@ -179,9 +199,16 @@ export async function saveChatWithPostsClient(
   );
   await client.query(`DELETE FROM compose_v2_posts WHERE chat_id = $1::uuid`, [chat.id]);
   for (const p of chat.posts) {
+    const imgs =
+      Array.isArray(p.images) && p.images.length > 0
+        ? p.images
+        : p.imageUrl?.trim()
+          ? [p.imageUrl.trim()]
+          : [];
+    const imageUrlFirst = primaryImageUrl(imgs);
     await client.query(
-      `INSERT INTO compose_v2_posts (chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id)
-       VALUES ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7, $8::timestamptz, $9)`,
+      `INSERT INTO compose_v2_posts (chat_id, post_index, label, theme, content, scheduled_date, status, published_at, linkedin_post_id, image_url, image_prompt, images)
+       VALUES ($1::uuid, $2, $3, $4, $5, $6::timestamptz, $7, $8::timestamptz, $9, $10, $11, $12::jsonb)`,
       [
         chat.id,
         p.index,
@@ -192,6 +219,9 @@ export async function saveChatWithPostsClient(
         p.status,
         p.publishedAt ?? null,
         p.linkedinPostId ?? null,
+        imageUrlFirst,
+        p.imagePrompt ?? null,
+        imagesToJsonbValue(imgs),
       ],
     );
   }
@@ -247,6 +277,21 @@ export async function updatePostInChat(
   if (patch.linkedinPostId !== undefined) {
     sets.push(`linkedin_post_id = $${n++}`);
     values.push(patch.linkedinPostId);
+  }
+  if (patch.images === undefined && patch.imageUrl !== undefined) {
+    sets.push(`image_url = $${n++}`);
+    values.push(patch.imageUrl);
+  }
+  if (patch.imagePrompt !== undefined) {
+    sets.push(`image_prompt = $${n++}`);
+    values.push(patch.imagePrompt);
+  }
+  if (patch.images !== undefined) {
+    const imgs = patch.images;
+    sets.push(`images = $${n++}::jsonb`);
+    values.push(imagesToJsonbValue(imgs));
+    sets.push(`image_url = $${n++}`);
+    values.push(primaryImageUrl(imgs));
   }
   if (sets.length === 0) return false;
   const res = await pool.query(

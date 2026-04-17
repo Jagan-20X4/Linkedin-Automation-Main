@@ -33,7 +33,24 @@ export async function POST(req: Request) {
         ? parseInt(body.postIndex, 10)
         : NaN;
 
-  const result = await publishLinkedInPost(text);
+  let imageDataUrls: string[] = [];
+  if (chatId && !Number.isNaN(postIndex)) {
+    const chat = await getChatById(chatId);
+    const post = chat?.posts.find((p) => p.index === postIndex);
+    if (post) {
+      const list =
+        Array.isArray(post.images) && post.images.length > 0
+          ? post.images
+          : post.imageUrl?.trim()
+            ? [post.imageUrl.trim()]
+            : [];
+      imageDataUrls = list.filter(
+        (u) => typeof u === "string" && u.trim().startsWith("data:image/"),
+      );
+    }
+  }
+
+  const result = await publishLinkedInPost(text, imageDataUrls);
   if (!result.ok) {
     return NextResponse.json(
       {

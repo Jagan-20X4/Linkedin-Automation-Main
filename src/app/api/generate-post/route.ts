@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlock } from "@anthropic-ai/sdk/resources/messages";
+import { generateImageForPost } from "@/lib/generate-post-image";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -44,8 +45,23 @@ Use short paragraphs, optional bullet points, and end with 3-5 relevant hashtags
         b.type === "text",
     );
     const text = textBlock?.text ?? "";
+    const post = text.trim();
 
-    return NextResponse.json({ post: text.trim() });
+    const themeForImage =
+      topic.length > 120 ? `${topic.slice(0, 120)}…` : topic;
+    const { images, imagePrompt } = await generateImageForPost(
+      anthropic,
+      model,
+      post,
+      themeForImage,
+    );
+
+    return NextResponse.json({
+      post,
+      images,
+      imageUrl: images[0] ?? undefined,
+      imagePrompt: imagePrompt ?? undefined,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Generation failed";
     return NextResponse.json({ error: msg }, { status: 500 });

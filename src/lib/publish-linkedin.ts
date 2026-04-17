@@ -1,7 +1,10 @@
 import axios from "axios";
 import { getPersonUrn, linkedinHeaders } from "@/lib/linkedin";
+import { uploadFeedshareImage } from "@/lib/linkedin-image-upload";
 
 const UGC = "https://api.linkedin.com/v2/ugcPosts";
+
+const MAX_IMAGES = 9;
 
 export type PublishLinkedInResult =
   | { ok: true; status: number; data: unknown }
@@ -12,8 +15,21 @@ export type PublishLinkedInResult =
       details?: unknown;
     };
 
+function sanitizeDataImageUrls(urls: unknown): string[] {
+  if (!Array.isArray(urls)) return [];
+  const out: string[] = [];
+  for (const u of urls) {
+    if (typeof u !== "string") continue;
+    const t = u.trim();
+    if (t.startsWith("data:image/")) out.push(t);
+    if (out.length >= MAX_IMAGES) break;
+  }
+  return out;
+}
+
 export async function publishLinkedInPost(
   text: string,
+  imageDataUrls?: string[] | null,
 ): Promise<PublishLinkedInResult> {
   const token = process.env.LINKEDIN_ACCESS_TOKEN?.trim();
   if (!token || token === "your_key_here") {
@@ -37,14 +53,41 @@ export async function publishLinkedInPost(
     return { ok: false, status: 502, message: msg };
   }
 
+  const images = sanitizeDataImageUrls(imageDataUrls);
+
+  let shareInner: Record<string, unknown>;
+  if (images.length === 0) {
+    shareInner = {
+      shareCommentary: { text: trimmed },
+      shareMediaCategory: "NONE",
+    };
+  } else {
+    const media: { status: string; media: string }[] = [];
+    for (const dataUrl of images) {
+      try {
+        const urn = await uploadFeedshareImage(token, author, dataUrl);
+        media.push({ status: "READY", media: urn });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return {
+          ok: false,
+          status: 502,
+          message: `LinkedIn image upload failed: ${msg}`,
+        };
+      }
+    }
+    shareInner = {
+      shareCommentary: { text: trimmed },
+      shareMediaCategory: "IMAGE",
+      media,
+    };
+  }
+
   const payload = {
     author,
     lifecycleState: "PUBLISHED",
     specificContent: {
-      "com.linkedin.ugc.ShareContent": {
-        shareCommentary: { text: trimmed },
-        shareMediaCategory: "NONE",
-      },
+      "com.linkedin.ugc.ShareContent": shareInner,
     },
     visibility: {
       "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",

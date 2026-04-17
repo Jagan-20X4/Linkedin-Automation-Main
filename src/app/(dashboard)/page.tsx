@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { ApprovalPostEditor } from "@/components/approval-post-editor";
+import { PostImagesGallery } from "@/components/post-images-gallery";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 type NavId =
@@ -38,10 +39,18 @@ type ScheduledApprovalRow = {
   publishedAt: string | null;
   linkedinPostId: string | null;
   rejectedAt?: string | null;
+  images?: string[];
+  imageUrl?: string | null;
   isDue?: boolean;
   timing?: ApprovalTiming;
   daysUntil?: number;
 };
+
+function approvalImageList(a: ScheduledApprovalRow): string[] {
+  if (Array.isArray(a.images) && a.images.length > 0) return a.images;
+  if (a.imageUrl?.trim()) return [a.imageUrl.trim()];
+  return [];
+}
 
 function resolveApprovalTiming(a: ScheduledApprovalRow): ApprovalTiming {
   if (a.timing) return a.timing;
@@ -79,6 +88,8 @@ function HomePage() {
   const [tone, setTone] = useState("");
   const [audience, setAudience] = useState("");
   const [generated, setGenerated] = useState("");
+  const [composeImageUrl, setComposeImageUrl] = useState<string | null>(null);
+  const [composeImagePrompt, setComposeImagePrompt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [linkedinMessage, setLinkedinMessage] = useState<string | null>(null);
   const [ormUrn, setOrmUrn] = useState("");
@@ -94,6 +105,9 @@ function HomePage() {
     Record<string, { dirty: boolean; saving: boolean }>
   >({});
   const [approvalsToast, setApprovalsToast] = useState<string | null>(null);
+  const [approvalImageBusyId, setApprovalImageBusyId] = useState<string | null>(
+    null,
+  );
   /** When set, Approvals list only shows rows for this chat id. */
   const [approvalsChatIdFilter, setApprovalsChatIdFilter] = useState<string | null>(
     null,
@@ -151,6 +165,8 @@ function HomePage() {
   async function handleGenerate() {
     setLoading(true);
     setGenerated("");
+    setComposeImageUrl(null);
+    setComposeImagePrompt(null);
     setLinkedinMessage(null);
     setLocalPublishDone(false);
     try {
@@ -173,6 +189,14 @@ function HomePage() {
         );
       }
       setGenerated(typeof data.post === "string" ? data.post : "");
+      setComposeImageUrl(
+        typeof data.imageUrl === "string" && data.imageUrl ? data.imageUrl : null,
+      );
+      setComposeImagePrompt(
+        typeof data.imagePrompt === "string" && data.imagePrompt
+          ? data.imagePrompt
+          : null,
+      );
     } catch (e) {
       setGenerated(e instanceof Error ? e.message : "Error");
     } finally {
@@ -302,6 +326,46 @@ function HomePage() {
     }
   }
 
+  async function addApprovalImage(approvalId: string, file: File) {
+    setApprovalImageBusyId(approvalId);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `/api/approvals/${encodeURIComponent(approvalId)}/images`,
+        { method: "POST", body: fd },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Upload failed");
+      }
+      await loadScheduledApprovals();
+    } catch (e) {
+      setApprovalsToast(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setApprovalImageBusyId(null);
+    }
+  }
+
+  async function removeApprovalImage(approvalId: string, imageIndex: number) {
+    setApprovalImageBusyId(approvalId);
+    try {
+      const res = await fetch(
+        `/api/approvals/${encodeURIComponent(approvalId)}/images/${imageIndex}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Remove failed");
+      }
+      await loadScheduledApprovals();
+    } catch (e) {
+      setApprovalsToast(e instanceof Error ? e.message : "Remove failed");
+    } finally {
+      setApprovalImageBusyId(null);
+    }
+  }
+
   useEffect(() => {
     if (!approvalsToast) return;
     const t = setTimeout(() => setApprovalsToast(null), 4000);
@@ -357,8 +421,10 @@ function HomePage() {
           <div className="mx-auto max-w-2xl">
             <h2 className="text-2xl font-semibold text-white">Compose</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Generate a post with Claude, then publish to LinkedIn. For
-              multi-week plans and scheduled approvals, use Compose V2.
+              Generate a post with Claude (optional image with Imagen 4 when{" "}
+              <code className="text-zinc-500">GEMINI_API_KEY</code> is set), then
+              publish to LinkedIn. For multi-week plans and scheduled approvals,
+              use Compose V2.
             </p>
             <label className="mt-6 block text-sm text-zinc-300">
               Topic / angle
@@ -397,7 +463,7 @@ function HomePage() {
                 onClick={handleGenerate}
                 className="rounded-lg bg-[#0a66c2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1d8aff] disabled:opacity-50"
               >
-                {loading ? "Working…" : "Generate post"}
+                {loading ? "Generating post + image…" : "Generate post"}
               </button>
               <button
                 type="button"
@@ -416,6 +482,23 @@ function HomePage() {
                 <p className="text-xs font-medium uppercase text-zinc-500">
                   Draft
                 </p>
+                {composeImageUrl ? (
+                  <div className="mt-3 border-b border-white/10 pb-4">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                      AI-generated image (Imagen 4)
+                    </p>
+                    <img
+                      src={composeImageUrl}
+                      alt=""
+                      className="mt-2 max-h-80 max-w-full rounded-lg border border-white/10 object-contain"
+                    />
+                    {composeImagePrompt ? (
+                      <p className="mt-2 text-xs text-zinc-500 line-clamp-2">
+                        Prompt: {composeImagePrompt}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <pre className="mt-2 whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-200">
                   {generated}
                 </pre>
@@ -586,7 +669,9 @@ function HomePage() {
                     schedLabel = a.scheduledDate;
                   }
                   const busy = approvalBusy[a.id];
-                  const approveBlocked = Boolean(busy?.dirty || busy?.saving);
+                  const approveBlocked = Boolean(
+                    busy?.dirty || busy?.saving || approvalImageBusyId === a.id,
+                  );
                   return (
                     <li
                       key={a.id}
@@ -637,12 +722,29 @@ function HomePage() {
                           onBusyChange={handleApprovalBusy}
                           onSaved={loadScheduledApprovals}
                         />
+                        <PostImagesGallery
+                          images={approvalImageList(a)}
+                          canEdit={a.status === "pending"}
+                          busy={approvalImageBusyId === a.id}
+                          title="Post images (synced with Compose)"
+                          onAddFile={(f) => void addApprovalImage(a.id, f)}
+                          onRemove={(i) => void removeApprovalImage(a.id, i)}
+                        />
                       </details>
                       {t === "due" && (
                         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
                           {approveBlocked ? (
                             <span className="mr-auto text-xs text-amber-200/80">
-                              Save the post (or discard edits) to enable publish.
+                              {[
+                                busy?.dirty || busy?.saving
+                                  ? "Save the post (or discard edits) to enable publish."
+                                  : null,
+                                approvalImageBusyId === a.id
+                                  ? "Finish image upload or removal first."
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                             </span>
                           ) : null}
                           <button
@@ -725,6 +827,10 @@ function HomePage() {
                 ANTHROPIC_API_KEY — Claude for compose; optional{" "}
                 <code className="text-zinc-500">ANTHROPIC_MODEL</code> (default{" "}
                 <code className="text-zinc-500">claude-sonnet-4-6</code>)
+              </li>
+              <li>
+                GEMINI_API_KEY — Google AI key for Imagen 4 images on Compose and
+                Compose V2 (optional; omit to skip images)
               </li>
               <li>
                 LINKEDIN_ACCESS_TOKEN — member token with w_member_social (+ profile

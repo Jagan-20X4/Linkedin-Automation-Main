@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlock } from "@anthropic-ai/sdk/resources/messages";
 import type { ComposeV2Chat, ComposeV2Post } from "@/lib/compose-v2-chats-store";
+import { generateImageForPost } from "@/lib/generate-post-image";
 import {
   getChatById,
   readChats,
@@ -13,6 +14,10 @@ import { replacePendingApprovalsForChatClient } from "@/lib/scheduled-approvals-
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function stripJsonFences(raw: string): string {
   return raw
@@ -180,8 +185,38 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
         content,
         scheduledDate,
         status: "pending" as const,
+        images: [] as string[],
+        imageUrl: null,
+        imagePrompt: null,
       };
     });
+
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    if (geminiKey && geminiKey !== "your_key_here" && posts.length > 0) {
+      console.log(
+        `Generating ${posts.length} images via Claude + Imagen 4 (batches of 2)…`,
+      );
+      for (let i = 0; i < posts.length; i += 2) {
+        const batch = posts.slice(i, i + 2);
+        const batchResults = await Promise.all(
+          batch.map((p) => generateImageForPost(anthropic, model, p.content, p.theme)),
+        );
+        for (let j = 0; j < batchResults.length; j++) {
+          const idx = i + j;
+          const r = batchResults[j];
+          posts[idx] = {
+            ...posts[idx],
+            images: r.images,
+            imageUrl: r.images[0] ?? null,
+            imagePrompt: r.imagePrompt,
+          };
+        }
+        console.log(`Images: ${Math.min(i + 2, posts.length)}/${posts.length} done`);
+        if (i + 2 < posts.length) {
+          await sleep(2000);
+        }
+      }
+    }
 
     let chat: ComposeV2Chat;
 
@@ -228,6 +263,9 @@ Respond ONLY with a valid JSON array, no markdown, no preamble:
       status: "pending" as const,
       publishedAt: null,
       linkedinPostId: null,
+      images: p.images ?? [],
+      imageUrl: p.imageUrl ?? null,
+      imagePrompt: p.imagePrompt ?? null,
     }));
 
     await withTransaction(async (c) => {

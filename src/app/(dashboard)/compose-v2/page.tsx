@@ -1,5 +1,6 @@
 "use client";
 
+import { PostImagesGallery } from "@/components/post-images-gallery";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Suspense,
@@ -36,6 +37,9 @@ type ComposePost = {
   status: "pending" | "published" | "rejected";
   publishedAt?: string | null;
   linkedinPostId?: string | null;
+  images?: string[];
+  imageUrl?: string | null;
+  imagePrompt?: string | null;
 };
 
 type ComposeChat = {
@@ -82,6 +86,12 @@ function isDueNow(post: ComposePost): boolean {
   return new Date(post.scheduledDate) <= new Date();
 }
 
+function postImageList(p: ComposePost): string[] {
+  if (Array.isArray(p.images) && p.images.length > 0) return p.images;
+  if (p.imageUrl?.trim()) return [p.imageUrl.trim()];
+  return [];
+}
+
 function ComposeV2Page() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -95,10 +105,14 @@ function ComposeV2Page() {
   const [weeksInput, setWeeksInput] = useState("");
   const [monthsInput, setMonthsInput] = useState("");
   const [loading, setLoading] = useState(false);
+  /** Post count for loading copy (Imagen + Claude timing). */
+  const [generatePlanCount, setGeneratePlanCount] = useState<number | null>(null);
   const [loadingList, setLoadingList] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [publishingIndex, setPublishingIndex] = useState<number | null>(null);
+  /** `${postIndex}-add` | `${postIndex}-del-${i}` while an image API call runs. */
+  const [postImageBusyKey, setPostImageBusyKey] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [chatPanelVisible, setChatPanelVisible] = useState(true);
 
@@ -223,6 +237,7 @@ function ComposeV2Page() {
       return;
     }
 
+    setGeneratePlanCount(durationValue);
     setLoading(true);
     try {
       const res = await fetch("/api/v2/generate", {
@@ -261,6 +276,7 @@ function ComposeV2Page() {
       showToast(e instanceof Error ? e.message : "Error", "error");
     } finally {
       setLoading(false);
+      setGeneratePlanCount(null);
     }
   }
 
@@ -329,6 +345,50 @@ function ComposeV2Page() {
       showToast(err instanceof Error ? err.message : "Publish failed", "error");
     } finally {
       setPublishingIndex(null);
+    }
+  }
+
+  async function addPostImage(postIndex: number, file: File) {
+    if (!activeChat) return;
+    setPostImageBusyKey(`${postIndex}-add`);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `/api/v2/chats/${encodeURIComponent(activeChat.id)}/posts/${postIndex}/images`,
+        { method: "POST", body: fd },
+      );
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Upload failed");
+      }
+      await loadChat(activeChat.id);
+      showToast("Image added.", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Upload failed", "error");
+    } finally {
+      setPostImageBusyKey(null);
+    }
+  }
+
+  async function removePostImage(postIndex: number, imageIndex: number) {
+    if (!activeChat) return;
+    setPostImageBusyKey(`${postIndex}-del-${imageIndex}`);
+    try {
+      const res = await fetch(
+        `/api/v2/chats/${encodeURIComponent(activeChat.id)}/posts/${postIndex}/images/${imageIndex}`,
+        { method: "DELETE" },
+      );
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Remove failed");
+      }
+      await loadChat(activeChat.id);
+      showToast("Image removed.", "neutral");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Remove failed", "error");
+    } finally {
+      setPostImageBusyKey(null);
     }
   }
 
@@ -561,9 +621,15 @@ function ComposeV2Page() {
                     style={{ borderTopColor: ACCENT }}
                     aria-hidden
                   />
-                  <p className="mt-4 text-center text-sm font-medium text-zinc-200">
-                    Claude is generating your plan…
+                  <p className="mt-4 max-w-md text-center text-sm font-medium text-zinc-200">
+                    Claude is writing your posts and Imagen 4 is generating images…
                   </p>
+                  {generatePlanCount != null ? (
+                    <p className="mt-2 max-w-md text-center text-xs leading-relaxed text-zinc-500">
+                      Generating {generatePlanCount} posts + images — often ~{generatePlanCount * 8}{" "}
+                      seconds total when <code className="text-zinc-400">GEMINI_API_KEY</code> is set.
+                    </p>
+                  ) : null}
                 </div>
               )}
 
@@ -667,16 +733,32 @@ function ComposeV2Page() {
                             </div>
                           </div>
                           {open && (
-                            <pre
-                              className="border-t border-white/10 px-4 py-4 text-sm leading-relaxed text-zinc-300"
-                              style={{
-                                whiteSpace: "pre-wrap",
-                                fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
-                                backgroundColor: "rgba(0,0,0,0.2)",
-                              }}
+                            <div
+                              className="border-t border-white/10"
+                              style={{ backgroundColor: "rgba(0,0,0,0.2)" }}
                             >
-                              {p.content}
-                            </pre>
+                              <PostImagesGallery
+                                images={postImageList(p)}
+                                canEdit={p.status === "pending"}
+                                busy={
+                                  postImageBusyKey !== null &&
+                                  postImageBusyKey.startsWith(`${p.index}-`)
+                                }
+                                title="Post images (AI + uploads)"
+                                enableImagePreview
+                                onAddFile={(file) => void addPostImage(p.index, file)}
+                                onRemove={(i) => void removePostImage(p.index, i)}
+                              />
+                              <pre
+                                className="px-4 py-4 text-sm leading-relaxed text-zinc-300"
+                                style={{
+                                  whiteSpace: "pre-wrap",
+                                  fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
+                                }}
+                              >
+                                {p.content}
+                              </pre>
+                            </div>
                           )}
                         </li>
                       );
