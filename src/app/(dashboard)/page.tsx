@@ -389,11 +389,11 @@ function HomePage() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-auto px-8 py-8">
+    <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         {active === "dashboard" && (
           <div className="mx-auto max-w-5xl">
             <header className="mb-8">
-              <h2 className="text-2xl font-semibold text-white">Dashboard</h2>
+              <h2 className="text-xl font-semibold text-white sm:text-2xl">Dashboard</h2>
               <p className="mt-1 text-sm text-zinc-400">
                 Overview of reach, engagement, and pipeline.
               </p>
@@ -419,7 +419,7 @@ function HomePage() {
 
         {active === "compose" && (
           <div className="mx-auto max-w-2xl">
-            <h2 className="text-2xl font-semibold text-white">Compose</h2>
+            <h2 className="text-xl font-semibold text-white sm:text-2xl">Compose</h2>
             <p className="mt-1 text-sm text-zinc-400">
               Generate a post with Claude (optional image with Imagen 4 when{" "}
               <code className="text-zinc-500">GEMINI_API_KEY</code> is set), then
@@ -509,7 +509,7 @@ function HomePage() {
 
         {active === "queue" && (
           <div className="mx-auto max-w-3xl">
-            <h2 className="text-2xl font-semibold text-white">Queue</h2>
+            <h2 className="text-xl font-semibold text-white sm:text-2xl">Queue</h2>
             <p className="mt-2 text-sm text-zinc-400">
               Scheduled posts will appear here once connected to your posting
               pipeline.
@@ -530,8 +530,8 @@ function HomePage() {
         )}
 
         {active === "approvals" && (
-          <div className="mx-auto max-w-3xl">
-            <h2 className="text-2xl font-semibold text-white">Approvals</h2>
+          <div className="mx-auto max-w-3xl min-w-0">
+            <h2 className="text-xl font-semibold text-white sm:text-2xl">Approvals</h2>
             <p className="mt-2 text-sm text-zinc-400">
               Scheduled posts from Compose V2. Approve to publish directly to
               LinkedIn, or reject to skip. This list refreshes every minute while
@@ -542,11 +542,11 @@ function HomePage() {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
                   By chat
                 </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2 flex max-w-full flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setApprovalsChatIdFilter(null)}
-                    className={`rounded-full border px-3 py-1.5 text-left text-xs transition ${
+                    className={`max-w-full rounded-full border px-3 py-1.5 text-left text-xs transition ${
                       approvalsChatIdFilter === null
                         ? "border-[#0a66c2]/50 bg-[#0a66c2]/15 text-blue-100"
                         : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
@@ -571,7 +571,7 @@ function HomePage() {
                         type="button"
                         onClick={() => setApprovalsChatIdFilter(s.chatId)}
                         title={detail}
-                        className={`max-w-[min(100%,18rem)] rounded-full border px-3 py-1.5 text-left text-xs transition ${
+                        className={`max-w-full rounded-full border px-3 py-1.5 text-left text-xs transition sm:max-w-[min(100%,18rem)] ${
                           active
                             ? "border-[#0a66c2]/50 bg-[#0a66c2]/15 text-blue-100"
                             : "border-white/10 text-zinc-400 hover:border-white/20 hover:text-zinc-200"
@@ -786,7 +786,7 @@ function HomePage() {
 
         {active === "orm" && (
           <div className="mx-auto max-w-3xl">
-            <h2 className="text-2xl font-semibold text-white">ORM Monitor</h2>
+            <h2 className="text-xl font-semibold text-white sm:text-2xl">ORM Monitor</h2>
             <p className="mt-2 text-sm text-zinc-400">
               Fetch comments for a LinkedIn activity or UGC URN (requires API
               access).
@@ -818,7 +818,7 @@ function HomePage() {
 
         {active === "settings" && (
           <div className="mx-auto max-w-3xl">
-            <h2 className="text-2xl font-semibold text-white">Settings</h2>
+            <h2 className="text-xl font-semibold text-white sm:text-2xl">Settings</h2>
             <p className="mt-2 text-sm text-zinc-400">
               Add real credentials to <code className="text-zinc-300">.env.local</code>:
             </p>

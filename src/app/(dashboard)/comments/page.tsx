@@ -229,10 +229,10 @@ export default function CommentsPage() {
 
   return (
     <div
-      className="flex min-h-screen text-zinc-100"
+      className="flex min-h-0 flex-1 flex-col overflow-x-hidden text-zinc-100 md:min-h-screen"
       style={{ backgroundColor: BG }}
     >
-      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
         <div
           className="shrink-0 overflow-y-auto border-b md:w-[35%] md:max-w-[35%] md:border-b-0 md:border-r"
           style={{

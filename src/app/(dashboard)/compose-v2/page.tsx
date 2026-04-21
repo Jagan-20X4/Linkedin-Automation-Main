@@ -14,7 +14,6 @@ import {
 const BG = "#0f0f0f";
 const SURFACE = "#1a1a1a";
 const ACCENT = "#0a66c2";
-const CHAT_LIST_W = 280;
 const LS_CHAT_PANEL_VISIBLE = "chatPanelVisible";
 
 type ChatSummary = {
@@ -171,6 +170,9 @@ function ComposeV2Page() {
         }
         setComposerOpen(true);
         router.replace(`/compose-v2?chatId=${encodeURIComponent(chatId)}`, { scroll: false });
+        if (typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches) {
+          setChatPanelVisible(false);
+        }
       } catch (e) {
         showToast(e instanceof Error ? e.message : "Load failed", "error");
       }
@@ -184,6 +186,12 @@ function ComposeV2Page() {
 
   useEffect(() => {
     try {
+      const isLg =
+        typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+      if (!isLg) {
+        setChatPanelVisible(false);
+        return;
+      }
       const v = localStorage.getItem(LS_CHAT_PANEL_VISIBLE);
       if (v === "false") setChatPanelVisible(false);
     } catch {
@@ -283,6 +291,8 @@ function ComposeV2Page() {
   async function handleDeleteChat(e: React.MouseEvent, chatId: string) {
     e.stopPropagation();
     if (!confirm("Delete this chat and all its scheduled posts?")) return;
+    const prevList = allChats;
+    setAllChats((p) => p.filter((c) => c.id !== chatId));
     try {
       const res = await fetch(`/api/v2/chats/${encodeURIComponent(chatId)}`, {
         method: "DELETE",
@@ -294,9 +304,10 @@ function ComposeV2Page() {
         );
       }
       if (activeChat?.id === chatId) newChat();
-      await loadChatList();
       showToast("Chat and its approvals removed.", "success");
+      void loadChatList();
     } catch (err) {
+      setAllChats(prevList);
       showToast(err instanceof Error ? err.message : "Delete failed", "error");
     }
   }
@@ -411,10 +422,45 @@ function ComposeV2Page() {
         : "border-white/10";
 
   return (
-    <div className="flex min-h-screen text-zinc-100" style={{ backgroundColor: BG }}>
+    <div
+      className="flex min-h-0 flex-1 flex-col text-zinc-100 lg:min-h-screen lg:flex-row"
+      style={{ backgroundColor: BG }}
+    >
+      {!chatPanelVisible ? (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2 lg:hidden"
+          style={{ backgroundColor: SURFACE }}
+        >
+          <button
+            type="button"
+            onClick={() => toggleChatPanel(true)}
+            className="min-h-11 rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-zinc-100 transition hover:border-[#0a66c2]/50 hover:bg-white/5"
+          >
+            Chats
+          </button>
+          <button
+            type="button"
+            aria-label="New chat"
+            title="New chat"
+            onClick={() => newChat()}
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-white/15 text-lg font-semibold leading-none text-zinc-100 transition hover:border-[#0a66c2]/50 hover:bg-white/5"
+            style={{ backgroundColor: ACCENT }}
+          >
+            +
+          </button>
+        </div>
+      ) : null}
+      {chatPanelVisible ? (
+        <button
+          type="button"
+          aria-label="Close chat list"
+          className="fixed inset-0 z-40 bg-black/65 lg:hidden"
+          onClick={() => toggleChatPanel(false)}
+        />
+      ) : null}
       {!chatPanelVisible && (
         <div
-          className="flex shrink-0 flex-col border-r border-white/10 py-6 pl-2 pr-1"
+          className="hidden shrink-0 flex-col border-r border-white/10 py-6 pl-2 pr-1 lg:flex"
           style={{ width: 44, backgroundColor: SURFACE }}
         >
           <button
@@ -428,11 +474,11 @@ function ComposeV2Page() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col lg:flex-row">
         {chatPanelVisible && (
         <div
-          className="shrink-0 border-r border-white/10 py-6 pl-4 pr-3 transition-[opacity,width] duration-200 ease-out"
-          style={{ width: CHAT_LIST_W, backgroundColor: SURFACE }}
+          className="fixed inset-y-0 left-0 z-50 flex w-[min(20rem,calc(100vw-1rem))] shrink-0 flex-col border-r border-white/10 py-6 pl-4 pr-3 shadow-2xl shadow-black/40 transition-[opacity,width] duration-200 ease-out lg:static lg:z-auto lg:w-[280px] lg:max-w-none lg:shadow-none"
+          style={{ backgroundColor: SURFACE }}
         >
           <div className="mb-4 flex items-center justify-between gap-2 pr-1">
             <h2 className="text-sm font-semibold text-white">Chats</h2>
@@ -521,7 +567,7 @@ function ComposeV2Page() {
         </div>
         )}
 
-        <main className="min-w-0 flex-1 overflow-auto px-8 py-8">
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-2 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
           {showEmptySplash ? (
             <div className="mx-auto flex max-w-xl flex-col items-center justify-center py-24 text-center">
               <p className="text-lg text-zinc-300">
@@ -532,8 +578,8 @@ function ComposeV2Page() {
               </p>
             </div>
           ) : (
-            <div className="mx-auto max-w-3xl">
-              <h2 className="text-2xl font-semibold text-white">Compose V2</h2>
+            <div className="w-full min-w-0 max-w-none md:mx-auto md:max-w-3xl">
+              <h2 className="text-xl font-semibold text-white sm:text-2xl">Compose V2</h2>
               <p className="mt-1 text-sm text-zinc-400">
                 Generate a multi-week or multi-month plan. Each post is scheduled for approval;
                 publish from here or from the Approvals tab.
@@ -635,9 +681,9 @@ function ComposeV2Page() {
 
               {sortedPosts.length > 0 && !loading && (
                 <section className="mt-10">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h3 className="text-lg font-semibold text-white">Your Plan</h3>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                      <h3 className="text-base font-semibold text-white sm:text-lg">Your Plan</h3>
                       <span className="rounded-full border border-white/15 px-2.5 py-0.5 text-xs text-zinc-400">
                         {sortedPosts.length} posts
                       </span>
@@ -666,11 +712,11 @@ function ComposeV2Page() {
                           className="overflow-hidden rounded-xl border border-white/10 transition hover:border-white/20"
                           style={{ backgroundColor: SURFACE }}
                         >
-                          <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+                          <div className="flex flex-col gap-3 px-3 py-3 sm:px-4 sm:py-3">
                             <button
                               type="button"
                               onClick={() => togglePost(p.index)}
-                              className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left sm:flex-row sm:items-center sm:gap-3"
+                              className="flex w-full min-w-0 items-start gap-2 text-left"
                             >
                               <span
                                 className="shrink-0 rounded-md px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-white"
@@ -678,58 +724,66 @@ function ComposeV2Page() {
                               >
                                 {labelUpper}
                               </span>
-                              <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
-                                {p.theme}
+                              <div className="min-w-0 flex-1">
+                                <p className="line-clamp-3 text-sm font-medium leading-snug text-zinc-100 sm:line-clamp-2 sm:text-base">
+                                  {p.theme}
+                                </p>
+                                <p className="mt-1 text-xs text-zinc-500">
+                                  Scheduled: {formatScheduled(p.scheduledDate)}
+                                </p>
+                              </div>
+                              <span className="shrink-0 pt-0.5 text-zinc-500" aria-hidden>
+                                {open ? "▼" : "▶"}
                               </span>
-                              <span className="text-xs text-zinc-500">
-                                Scheduled: {formatScheduled(p.scheduledDate)}
-                              </span>
-                              <span className="ml-auto shrink-0 text-zinc-500">{open ? "▼" : "▶"}</span>
                             </button>
-                            <div className="flex shrink-0 flex-wrap items-center gap-2">
-                              {p.status === "published" && (
-                                <span className="rounded-md bg-[#0a66c2]/35 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-100">
-                                  Published
-                                </span>
-                              )}
-                              {p.status === "rejected" && (
-                                <span className="rounded-md bg-zinc-600/40 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-300">
-                                  Rejected
-                                </span>
-                              )}
-                              {p.status === "pending" && due && (
-                                <span className="rounded-md bg-[#0a66c2]/40 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-100">
-                                  Due Now
-                                </span>
-                              )}
-                              {p.status === "pending" && !due && (
-                                <span className="rounded-md bg-zinc-700/50 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-400">
-                                  Pending
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={(e) => void copyPost(e, p.content, p.index)}
-                                className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-white/5"
-                              >
-                                {copiedIndex === p.index ? "✓ Copied" : "Copy"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={publishing || p.status === "published"}
-                                onClick={(e) => void publishPost(e, p.content, p.index)}
-                                className={`rounded-md border-none px-3.5 py-1.5 text-xs font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                                  p.status === "published"
-                                    ? "bg-[#1db954]"
-                                    : "bg-[#0a66c2] hover:bg-[#1d8aff]"
-                                }`}
-                              >
-                                {publishing
-                                  ? "Publishing…"
-                                  : p.status === "published"
-                                    ? "✓ Published"
-                                    : "Publish to LinkedIn"}
-                              </button>
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {p.status === "published" && (
+                                  <span className="rounded-md bg-[#0a66c2]/35 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-100">
+                                    Published
+                                  </span>
+                                )}
+                                {p.status === "rejected" && (
+                                  <span className="rounded-md bg-zinc-600/40 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-300">
+                                    Rejected
+                                  </span>
+                                )}
+                                {p.status === "pending" && due && (
+                                  <span className="rounded-md bg-[#0a66c2]/40 px-2 py-0.5 text-[10px] font-semibold uppercase text-blue-100">
+                                    Due Now
+                                  </span>
+                                )}
+                                {p.status === "pending" && !due && (
+                                  <span className="rounded-md bg-zinc-700/50 px-2 py-0.5 text-[10px] font-semibold uppercase text-zinc-400">
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(e) => void copyPost(e, p.content, p.index)}
+                                  className="min-h-[44px] rounded-md border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5 sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
+                                >
+                                  {copiedIndex === p.index ? "✓ Copied" : "Copy"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={publishing || p.status === "published"}
+                                  onClick={(e) => void publishPost(e, p.content, p.index)}
+                                  className={`min-h-[44px] w-full rounded-md border-none px-4 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-3.5 sm:py-1.5 sm:text-xs ${
+                                    p.status === "published"
+                                      ? "bg-[#1db954]"
+                                      : "bg-[#0a66c2] hover:bg-[#1d8aff]"
+                                  }`}
+                                >
+                                  {publishing
+                                    ? "Publishing…"
+                                    : p.status === "published"
+                                      ? "✓ Published"
+                                      : "Publish to LinkedIn"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                           {open && (
@@ -749,15 +803,12 @@ function ComposeV2Page() {
                                 onAddFile={(file) => void addPostImage(p.index, file)}
                                 onRemove={(i) => void removePostImage(p.index, i)}
                               />
-                              <pre
-                                className="px-4 py-4 text-sm leading-relaxed text-zinc-300"
-                                style={{
-                                  whiteSpace: "pre-wrap",
-                                  fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
-                                }}
+                              <div
+                                className="px-3 py-4 font-sans text-[15px] leading-relaxed tracking-normal text-zinc-200 sm:px-4 sm:text-sm"
+                                style={{ whiteSpace: "pre-wrap" }}
                               >
                                 {p.content}
-                              </pre>
+                              </div>
                             </div>
                           )}
                         </li>

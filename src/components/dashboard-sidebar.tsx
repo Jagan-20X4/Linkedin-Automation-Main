@@ -46,29 +46,62 @@ function itemActive(pathname: string, searchParams: URLSearchParams, item: Item)
 }
 
 function itemClass(active: boolean) {
-  return `flex items-center gap-2 rounded-lg py-2.5 pl-3 pr-3 text-left text-sm transition ${
+  return `flex min-h-[44px] items-center gap-2 rounded-lg py-2.5 pl-3 pr-3 text-left text-sm transition ${
     active
       ? "border-l-[3px] border-[#0a66c2] bg-[#0a66c2]/15 pl-[calc(0.75rem-3px)] font-medium text-white"
       : "border-l-[3px] border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
   }`;
 }
 
-export function DashboardSidebar() {
+export type DashboardSidebarProps = {
+  /** Called after a nav link is activated (e.g. close mobile drawer). */
+  onNavigate?: () => void;
+  showClose?: boolean;
+  onClose?: () => void;
+};
+
+export function DashboardSidebar({
+  onNavigate,
+  showClose,
+  onClose,
+}: DashboardSidebarProps = {}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0c10] px-4 py-6">
-      <div className="mb-8 px-2">
-        <p
-          className="text-xs font-medium uppercase tracking-[0.2em]"
-          style={{ color: ACCENT_HOVER }}
-        >
-          LinkedIn
-        </p>
-        <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
-      </div>
-      <nav className="flex flex-1 flex-col gap-1">
+    <aside className="flex h-full min-h-0 w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0c10] px-4 py-6 lg:h-auto lg:min-h-screen">
+      {showClose ? (
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="min-w-0 px-2">
+            <p
+              className="text-xs font-medium uppercase tracking-[0.2em]"
+              style={{ color: ACCENT_HOVER }}
+            >
+              LinkedIn
+            </p>
+            <h1 className="mt-1 truncate text-lg font-semibold text-white">Autopilot</h1>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-white/15 text-lg text-zinc-300 transition hover:border-white/25 hover:bg-white/5"
+            aria-label="Close menu"
+          >
+            ×
+          </button>
+        </div>
+      ) : (
+        <div className="mb-8 px-2">
+          <p
+            className="text-xs font-medium uppercase tracking-[0.2em]"
+            style={{ color: ACCENT_HOVER }}
+          >
+            LinkedIn
+          </p>
+          <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
+        </div>
+      )}
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
         {ITEMS.map((item) => {
           const active = itemActive(pathname, searchParams, item);
           const cls = itemClass(active);
@@ -79,6 +112,7 @@ export function DashboardSidebar() {
               prefetch
               scroll={false}
               className={cls}
+              onClick={() => onNavigate?.()}
             >
               <span className="text-base opacity-90" aria-hidden>
                 {item.icon}
@@ -88,7 +122,7 @@ export function DashboardSidebar() {
           );
         })}
       </nav>
-      <p className="mt-auto px-2 text-xs text-zinc-500">
+      <p className="mt-4 px-2 text-xs text-zinc-500">
         Configure keys in <code className="text-zinc-400">.env.local</code>
       </p>
     </aside>

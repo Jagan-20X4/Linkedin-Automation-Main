@@ -1,17 +1,17 @@
-import { readChats } from "@/lib/compose-v2-chats-store";
+import { readChatSummaries } from "@/lib/compose-v2-chats-store";
 import { disambiguateLabels } from "@/lib/chat-display-label";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const chats = await readChats();
+  const chats = await readChatSummaries();
   const summary = [...chats].reverse().map((c) => ({
     id: c.id,
     title: c.title,
     durationType: c.durationType,
     durationValue: c.durationValue,
-    postCount: c.posts?.length ?? 0,
+    postCount: c.postCount,
     createdAt: c.createdAt,
   }));
   const displayById = disambiguateLabels(

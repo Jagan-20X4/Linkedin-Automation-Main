@@ -42,8 +42,8 @@ export function PostImagesGallery({
   }
 
   return (
-    <div className="border-b border-white/10 px-4 py-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+    <div className="border-b border-white/10 px-3 py-3 sm:px-4">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
           {title}
         </p>
@@ -64,7 +64,7 @@ export function PostImagesGallery({
               type="button"
               disabled={busy}
               onClick={() => inputRef.current?.click()}
-              className="rounded-md border border-dashed border-white/25 px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:border-[#0a66c2]/60 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-45"
+              className="min-h-[40px] self-start rounded-md border border-dashed border-white/25 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:border-[#0a66c2]/60 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-0 sm:py-1"
             >
               + Add image
             </button>
@@ -72,11 +72,11 @@ export function PostImagesGallery({
         ) : null}
       </div>
       {images.length > 0 ? (
-        <ul className="flex flex-wrap gap-2">
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
           {images.map((src, i) => (
             <li
               key={`${i}-${src.slice(0, 48)}`}
-              className="group relative h-24 w-24 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/40"
+              className="group relative aspect-square w-full min-h-0 overflow-hidden rounded-lg border border-white/10 bg-black/40"
             >
               {enableImagePreview ? (
                 <button
@@ -107,7 +107,7 @@ export function PostImagesGallery({
                     e.stopPropagation();
                     void onRemove(i);
                   }}
-                  className="absolute right-1 top-1 z-10 flex h-6 w-6 items-center justify-center rounded bg-black/70 text-xs font-bold text-white opacity-0 transition group-hover:opacity-100 hover:bg-rose-700/90 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="absolute right-1 top-1 z-10 flex h-8 w-8 items-center justify-center rounded-md bg-black/75 text-sm font-bold text-white opacity-100 shadow-md transition hover:bg-rose-700/90 disabled:cursor-not-allowed disabled:opacity-40 md:h-6 md:w-6 md:text-xs md:opacity-0 md:group-hover:opacity-100"
                 >
                   ×
                 </button>

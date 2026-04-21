@@ -2,11 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlock } from "@anthropic-ai/sdk/resources/messages";
 import type { ComposeV2Chat, ComposeV2Post } from "@/lib/compose-v2-chats-store";
 import { generateImageForPost } from "@/lib/generate-post-image";
-import {
-  getChatById,
-  readChats,
-  saveChatWithPostsClient,
-} from "@/lib/compose-v2-chats-store";
+import { getChatById, saveChatWithPostsClient } from "@/lib/compose-v2-chats-store";
 import { calculateScheduledDates } from "@/lib/compose-v2-schedule";
 import { withTransaction } from "@/lib/db";
 import type { ScheduledApprovalItem } from "@/lib/scheduled-approvals-store";
@@ -75,13 +71,12 @@ export async function POST(req: Request) {
   const model =
     process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-6";
 
-  const chatsForTopic = await readChats();
   const existingIdForTopic =
     typeof body.chatId === "string" && body.chatId.trim()
       ? body.chatId.trim()
       : null;
   const existingChatForTopic = existingIdForTopic
-    ? chatsForTopic.find((c) => c.id === existingIdForTopic)
+    ? await getChatById(existingIdForTopic)
     : undefined;
 
   /** New chats require a topic; existing chats keep the stored strategy (not the request body). */

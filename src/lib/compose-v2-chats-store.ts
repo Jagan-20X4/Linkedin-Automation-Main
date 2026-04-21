@@ -33,6 +33,18 @@ export type ComposeV2Chat = {
   updatedAt?: string;
 };
 
+/** List row without post bodies or images — fast for sidebar + approvals title enrichment. */
+export type ComposeV2ChatSummary = {
+  id: string;
+  title: string;
+  topic: string;
+  durationType: "weeks" | "months";
+  durationValue: number;
+  postCount: number;
+  createdAt: string;
+  updatedAt?: string;
+};
+
 function mapPostRow(r: {
   post_index: number;
   label: string;
@@ -128,6 +140,42 @@ async function loadPostsForChatIds(
     map.set(row.chat_id, list);
   }
   return map;
+}
+
+export async function readChatSummaries(): Promise<ComposeV2ChatSummary[]> {
+  const pool = getPool();
+  const res = await pool.query<{
+    id: string;
+    title: string;
+    topic: string;
+    duration_type: string;
+    duration_value: number;
+    created_at: Date;
+    updated_at: Date | null;
+    post_count: string;
+  }>(
+    `SELECT c.id, c.title, c.topic, c.duration_type, c.duration_value, c.created_at, c.updated_at,
+            COALESCE(COUNT(p.post_index), 0)::text AS post_count
+     FROM compose_v2_chats c
+     LEFT JOIN compose_v2_posts p ON p.chat_id = c.id
+     GROUP BY c.id, c.title, c.topic, c.duration_type, c.duration_value, c.created_at, c.updated_at
+     ORDER BY c.created_at ASC`,
+  );
+  return res.rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    topic: r.topic,
+    durationType: r.duration_type as ComposeV2Chat["durationType"],
+    durationValue: r.duration_value,
+    postCount: Number.parseInt(r.post_count, 10) || 0,
+    createdAt:
+      r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    updatedAt: r.updated_at
+      ? r.updated_at instanceof Date
+        ? r.updated_at.toISOString()
+        : String(r.updated_at)
+      : undefined,
+  }));
 }
 
 export async function readChats(): Promise<ComposeV2Chat[]> {

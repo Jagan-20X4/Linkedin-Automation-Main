@@ -1,4 +1,4 @@
-import { readChats } from "@/lib/compose-v2-chats-store";
+import { readChatSummaries } from "@/lib/compose-v2-chats-store";
 import { disambiguateLabels } from "@/lib/chat-display-label";
 import type { ScheduledApprovalItem } from "@/lib/scheduled-approvals-store";
 import { readScheduledApprovals } from "@/lib/scheduled-approvals-store";
@@ -19,7 +19,7 @@ export type EnrichedScheduledApproval = ScheduledApprovalItem & {
 async function enrichApprovals(): Promise<EnrichedScheduledApproval[]> {
   const [approvals, chats] = await Promise.all([
     readScheduledApprovals(),
-    readChats(),
+    readChatSummaries(),
   ]);
   const titleFromChats = new Map(
     chats.map((c) => [c.id, (c.title?.trim() || c.topic?.trim() || "(untitled)") as string]),
