@@ -799,6 +799,7 @@ function ComposeV2Page() {
                                   postImageBusyKey !== null &&
                                   postImageBusyKey.startsWith(`${p.index}-`)
                                 }
+                                uploading={postImageBusyKey === `${p.index}-add`}
                                 title="Post images (AI + uploads)"
                                 enableImagePreview
                                 onAddFile={(file) => void addPostImage(p.index, file)}

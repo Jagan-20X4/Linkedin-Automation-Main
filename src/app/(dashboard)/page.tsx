@@ -113,9 +113,10 @@ function HomePage() {
     Record<string, { dirty: boolean; saving: boolean }>
   >({});
   const [approvalsToast, setApprovalsToast] = useState<string | null>(null);
-  const [approvalImageBusyId, setApprovalImageBusyId] = useState<string | null>(
-    null,
-  );
+  const [approvalImageBusy, setApprovalImageBusy] = useState<{
+    id: string;
+    op: "add" | "remove";
+  } | null>(null);
   /** When set, Approvals list only shows rows for this chat id. */
   const [approvalsChatIdFilter, setApprovalsChatIdFilter] = useState<string | null>(
     null,
@@ -344,7 +345,7 @@ function HomePage() {
   }
 
   async function addApprovalImage(approvalId: string, file: File) {
-    setApprovalImageBusyId(approvalId);
+    setApprovalImageBusy({ id: approvalId, op: "add" });
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -360,12 +361,12 @@ function HomePage() {
     } catch (e) {
       setApprovalsToast(e instanceof Error ? e.message : "Upload failed");
     } finally {
-      setApprovalImageBusyId(null);
+      setApprovalImageBusy(null);
     }
   }
 
   async function removeApprovalImage(approvalId: string, imageIndex: number) {
-    setApprovalImageBusyId(approvalId);
+    setApprovalImageBusy({ id: approvalId, op: "remove" });
     try {
       const res = await fetch(
         `/api/approvals/${encodeURIComponent(approvalId)}/images/${imageIndex}`,
@@ -379,7 +380,7 @@ function HomePage() {
     } catch (e) {
       setApprovalsToast(e instanceof Error ? e.message : "Remove failed");
     } finally {
-      setApprovalImageBusyId(null);
+      setApprovalImageBusy(null);
     }
   }
 
@@ -689,7 +690,7 @@ function HomePage() {
                   }
                   const busy = approvalBusy[a.id];
                   const approveBlocked = Boolean(
-                    busy?.dirty || busy?.saving || approvalImageBusyId === a.id,
+                    busy?.dirty || busy?.saving || approvalImageBusy?.id === a.id,
                   );
                   return (
                     <li
@@ -744,8 +745,13 @@ function HomePage() {
                         <PostImagesGallery
                           images={approvalImageList(a)}
                           canEdit={a.status === "pending"}
-                          busy={approvalImageBusyId === a.id}
+                          busy={approvalImageBusy?.id === a.id}
+                          uploading={
+                            approvalImageBusy?.id === a.id &&
+                            approvalImageBusy.op === "add"
+                          }
                           title="Post images (synced with Compose)"
+                          enableImagePreview
                           onAddFile={(f) => void addApprovalImage(a.id, f)}
                           onRemove={(i) => void removeApprovalImage(a.id, i)}
                         />
@@ -758,7 +764,7 @@ function HomePage() {
                                 busy?.dirty || busy?.saving
                                   ? "Save the post (or discard edits) to enable publish."
                                   : null,
-                                approvalImageBusyId === a.id
+                                approvalImageBusy?.id === a.id
                                   ? "Finish image upload or removal first."
                                   : null,
                               ]

@@ -6,12 +6,14 @@ type Props = {
   images: string[];
   canEdit: boolean;
   busy?: boolean;
+  /** Shimmer placeholder tile while a new image is uploading. */
+  uploading?: boolean;
   onRemove: (imageIndex: number) => void | Promise<void>;
   onAddFile: (file: File) => void | Promise<void>;
   maxImages?: number;
   /** Shown above the grid (e.g. "Post images"). */
   title?: string;
-  /** When true, tapping a thumbnail opens a full-screen style preview (Compose V2 only). */
+  /** When true, tapping a thumbnail opens a full-screen style preview. */
   enableImagePreview?: boolean;
 };
 
@@ -19,6 +21,7 @@ export function PostImagesGallery({
   images,
   canEdit,
   busy = false,
+  uploading = false,
   onRemove,
   onAddFile,
   maxImages = 9,
@@ -37,9 +40,11 @@ export function PostImagesGallery({
     return () => window.removeEventListener("keydown", onKey);
   }, [previewUrl]);
 
-  if (images.length === 0 && !canEdit) {
+  if (images.length === 0 && !canEdit && !uploading) {
     return null;
   }
+
+  const hasImageTiles = images.length > 0 || uploading;
 
   return (
     <div className="border-b border-white/10 px-3 py-3 sm:px-4">
@@ -71,7 +76,7 @@ export function PostImagesGallery({
           </>
         ) : null}
       </div>
-      {images.length > 0 ? (
+      {hasImageTiles ? (
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
           {images.map((src, i) => (
             <li
@@ -114,6 +119,15 @@ export function PostImagesGallery({
               ) : null}
             </li>
           ))}
+          {uploading ? (
+            <li
+              className="relative flex aspect-square w-full min-h-0 items-stretch overflow-hidden rounded-lg border border-dashed border-white/20 bg-black/30 p-2"
+              aria-busy
+              aria-label="Uploading image"
+            >
+              <div className="ui-skeleton-bar min-h-0 w-full flex-1 rounded-md" />
+            </li>
+          ) : null}
         </ul>
       ) : (
         <p className="text-xs text-zinc-500">No images yet.</p>
