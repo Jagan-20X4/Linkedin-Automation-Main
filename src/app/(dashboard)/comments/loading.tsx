@@ -2,11 +2,11 @@ export default function CommentsLoading() {
   return (
     <div
       className="flex min-h-screen animate-pulse text-zinc-500"
-      style={{ backgroundColor: "#0f0f0f" }}
+      style={{ backgroundColor: "var(--app-bg)" }}
     >
       <aside
         className="shrink-0 border-r border-white/10 px-3 py-6"
-        style={{ width: 220, backgroundColor: "#1a1a1a" }}
+        style={{ width: 220, backgroundColor: "var(--app-surface)" }}
       >
         <div className="mb-8 h-10 w-32 rounded bg-white/10" />
         <div className="space-y-1">

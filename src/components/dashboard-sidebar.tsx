@@ -46,11 +46,10 @@ function itemActive(pathname: string, searchParams: URLSearchParams, item: Item)
 }
 
 function itemClass(active: boolean) {
-  return `flex min-h-[44px] items-center gap-2 rounded-lg py-2.5 pl-3 pr-3 text-left text-sm transition ${
-    active
-      ? "border-l-[3px] border-[#0a66c2] bg-[#0a66c2]/15 pl-[calc(0.75rem-3px)] font-medium text-white"
-      : "border-l-[3px] border-transparent text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-  }`;
+  if (active) {
+    return "flex min-h-[44px] items-center gap-2 rounded-lg border-l-[3px] border-[#0a66c2] bg-[#0a66c2]/10 py-2.5 pl-[calc(0.75rem-3px)] pr-3 text-left text-sm font-medium text-[#0a5494] transition";
+  }
+  return "flex min-h-[44px] items-center gap-2 rounded-lg border-l-[3px] border-transparent py-2.5 pl-3 pr-3 text-left text-sm text-zinc-600 transition hover:bg-black/[0.04] hover:text-zinc-900";
 }
 
 export type DashboardSidebarProps = {
@@ -69,9 +68,25 @@ export function DashboardSidebar({
   const searchParams = useSearchParams();
 
   return (
-    <aside className="flex h-full min-h-0 w-60 shrink-0 flex-col border-r border-white/10 bg-[#0a0c10] px-4 py-6 lg:h-auto lg:min-h-screen">
+    <aside
+      className="flex h-full min-h-0 w-60 shrink-0 flex-col border-r px-4 py-6 lg:h-auto lg:min-h-screen"
+      style={{
+        backgroundColor: "var(--app-sidebar)",
+        borderColor: "var(--app-border)",
+      }}
+    >
       {showClose ? (
-        <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="mb-4 flex flex-col gap-3">
+          <div className="flex items-start justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-black/10 text-lg text-zinc-700 transition hover:border-[#0a66c2]/50 hover:bg-black/[0.04]"
+              aria-label="Close menu"
+            >
+              ×
+            </button>
+          </div>
           <div className="min-w-0 px-2">
             <p
               className="text-xs font-medium uppercase tracking-[0.2em]"
@@ -79,26 +94,20 @@ export function DashboardSidebar({
             >
               LinkedIn
             </p>
-            <h1 className="mt-1 truncate text-lg font-semibold text-white">Autopilot</h1>
+            <h1 className="mt-1 truncate text-lg font-semibold text-zinc-900">
+              Autopilot
+            </h1>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-white/15 text-lg text-zinc-300 transition hover:border-white/25 hover:bg-white/5"
-            aria-label="Close menu"
-          >
-            ×
-          </button>
         </div>
       ) : (
-        <div className="mb-8 px-2">
+        <div className="mb-6 flex flex-col gap-3 px-2">
           <p
             className="text-xs font-medium uppercase tracking-[0.2em]"
             style={{ color: ACCENT_HOVER }}
           >
             LinkedIn
           </p>
-          <h1 className="mt-1 text-lg font-semibold text-white">Autopilot</h1>
+          <h1 className="text-lg font-semibold text-zinc-900">Autopilot</h1>
         </div>
       )}
       <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
@@ -122,8 +131,8 @@ export function DashboardSidebar({
           );
         })}
       </nav>
-      <p className="mt-4 px-2 text-xs text-zinc-500">
-        Configure keys in <code className="text-zinc-400">.env.local</code>
+      <p className="mt-4 px-2 text-xs text-zinc-600">
+        <code className="text-zinc-800"></code>
       </p>
     </aside>
   );

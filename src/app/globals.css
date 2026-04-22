@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0c10;
-  --foreground: #e4e4e7;
+  --background: #ffffff;
+  --foreground: #171717;
+  --app-bg-root: #ffffff;
+  --app-bg: #ffffff;
+  --app-surface: #f5f5f5;
+  --app-surface2: #e8e8e8;
+  --app-sidebar: #f0f0f0;
+  --app-foreground: #171717;
+  --app-muted: #52525b;
+  --app-border: rgba(0, 0, 0, 0.08);
+  --app-accent: #0a66c2;
+  --app-hover-surface: rgba(0, 0, 0, 0.05);
 }
 
 @theme inline {
@@ -13,7 +23,7 @@
 }
 
 body {
-  background: var(--background);
+  background: var(--app-bg-root);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
@@ -28,7 +38,105 @@ body {
 }
 
 .ui-skeleton-bar {
-  background: linear-gradient(90deg, #1a1a1a 25%, #252525 50%, #1a1a1a 75%);
+  background: linear-gradient(90deg, #e8e8e8 25%, #f0f0f0 50%, #e8e8e8 75%);
   background-size: 200% 100%;
   animation: ui-skeleton-shimmer 1.5s infinite;
+}
+
+/* Map dark utility classes (still in markup) to light surfaces. */
+.bg-\[\#11141b\] {
+  background-color: var(--app-surface2) !important;
+}
+.bg-\[\#11141b\]\/80 {
+  background-color: color-mix(in srgb, var(--app-surface2) 88%, transparent) !important;
+}
+.bg-black\/20,
+.bg-black\/30 {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+.bg-black\/40 {
+  background-color: rgba(0, 0, 0, 0.08) !important;
+}
+.shadow-black\/40,
+.shadow-black\/50 {
+  --tw-shadow-color: rgba(0, 0, 0, 0.12);
+}
+
+/* Text utility remap for legibility on light surfaces. */
+.text-zinc-100 {
+  color: #18181b !important;
+}
+.text-zinc-200 {
+  color: #27272a !important;
+}
+.text-zinc-300 {
+  color: #3f3f46 !important;
+}
+.text-zinc-400 {
+  color: #52525b !important;
+}
+.text-zinc-500 {
+  color: #71717a !important;
+}
+
+.border-white\/10 {
+  border-color: var(--app-border) !important;
+}
+.border-white\/15,
+.border-white\/20,
+.border-white\/25 {
+  border-color: rgba(0, 0, 0, 0.12) !important;
+}
+
+/* Headings that were dark-mode white must be readable on the light page bg.
+   Buttons/badges with their own colored backgrounds keep their white text. */
+:where(h1, h2, h3, h4, h5, h6).text-white {
+  color: #000 !important;
+}
+
+/* Dashboard stat cards — pure black for max readability. */
+.stat-card__label,
+.stat-card__value,
+.stat-card__delta {
+  color: #000 !important;
+}
+
+/* Compose V2 weeks/months inputs — visible white box + black text. */
+.compose-duration-input {
+  background-color: #ffffff !important;
+  color: #000 !important;
+  border-color: rgba(0, 0, 0, 0.18) !important;
+}
+.compose-duration-input::placeholder {
+  color: #6b7280 !important;
+}
+.compose-duration-label,
+.compose-duration-hint {
+  color: #000 !important;
+}
+
+/* Approvals tab — high-contrast text. */
+.approvals-section,
+.approvals-section .text-white,
+.approvals-section .text-zinc-200,
+.approvals-section .text-zinc-300,
+.approvals-section .text-zinc-400,
+.approvals-section .text-zinc-500 {
+  color: #000 !important;
+}
+
+.approvals-section .bg-\[\#11141b\],
+.approvals-section .bg-\[\#11141b\]\/80 {
+  background-color: #e2e8f0 !important;
+  border-color: rgba(0, 0, 0, 0.18) !important;
+}
+
+.approvals-section .bg-white\/5,
+.approvals-section .bg-white\/10 {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.approvals-section .text-blue-100,
+.approvals-section .text-\[\#7cc4ff\]\/90 {
+  color: #0a3d7a !important;
 }

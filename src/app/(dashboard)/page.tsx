@@ -407,7 +407,13 @@ function HomePage() {
   }
 
   return (
-    <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+    <main
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] transition-[background-color,color] duration-300 ease-out sm:px-6 sm:py-6 lg:px-8 lg:py-8"
+      style={{
+        backgroundColor: "var(--app-bg)",
+        color: "var(--app-foreground)",
+      }}
+    >
         {active === "dashboard" && (
           <div className="mx-auto max-w-5xl">
             <header className="mb-8">
@@ -420,15 +426,17 @@ function HomePage() {
               {stats.map((s) => (
                 <div
                   key={s.label}
-                  className="rounded-xl border border-white/10 bg-[#11141b] p-5 shadow-sm shadow-black/40"
+                  className="stat-card rounded-xl border border-white/10 bg-[#11141b] p-5 shadow-sm shadow-black/40"
                 >
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  <p className="stat-card__label text-xs font-medium uppercase tracking-wide text-zinc-500">
                     {s.label}
                   </p>
-                  <p className="mt-3 text-3xl font-semibold tabular-nums text-white">
+                  <p className="stat-card__value mt-3 text-3xl font-semibold tabular-nums text-white">
                     {s.value}
                   </p>
-                  <p className="mt-2 text-xs text-[#7cc4ff]/90">{s.delta}</p>
+                  <p className="stat-card__delta mt-2 text-xs text-[#7cc4ff]/90">
+                    {s.delta}
+                  </p>
                 </div>
               ))}
             </div>
@@ -548,7 +556,7 @@ function HomePage() {
         )}
 
         {active === "approvals" && (
-          <div className="mx-auto max-w-3xl min-w-0">
+          <div className="approvals-section mx-auto max-w-3xl min-w-0">
             <h2 className="text-xl font-semibold text-white sm:text-2xl">Approvals</h2>
             <p className="mt-2 text-sm text-zinc-400">
               Scheduled posts from Compose V2. Approve to publish directly to
@@ -872,7 +880,13 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-[#0a0c10] text-sm text-zinc-400">
+        <div
+          className="flex min-h-screen items-center justify-center text-sm transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-bg-root)",
+            color: "var(--app-muted)",
+          }}
+        >
           Loading…
         </div>
       }

@@ -21,7 +21,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
-  themeColor: "#0a0c10",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -34,7 +34,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full min-h-[100dvh] flex-col overflow-x-hidden bg-[#0a0c10]">
+      <body className="flex min-h-full min-h-[100dvh] flex-col overflow-x-hidden">
         {children}
       </body>
     </html>

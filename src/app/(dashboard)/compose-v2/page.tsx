@@ -12,8 +12,8 @@ import {
   useState,
 } from "react";
 
-const BG = "#0f0f0f";
-const SURFACE = "#1a1a1a";
+const BG = "var(--app-bg)";
+const SURFACE = "var(--app-surface)";
 const ACCENT = "#0a66c2";
 const LS_CHAT_PANEL_VISIBLE = "chatPanelVisible";
 
@@ -610,7 +610,7 @@ function ComposeV2Page() {
 
               <div className="mt-4 flex flex-wrap gap-6">
                 <label className="text-sm text-zinc-300">
-                  <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
+                  <span className="compose-duration-label mb-1 block text-xs uppercase tracking-wide text-zinc-500">
                     Weeks
                   </span>
                   <input
@@ -622,12 +622,12 @@ function ComposeV2Page() {
                       setWeeksInput(e.target.value);
                       if (e.target.value) setMonthsInput("");
                     }}
-                    className="w-24 rounded-lg border border-white/10 bg-[#111] px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-[#0a66c2]/40"
+                    className="compose-duration-input w-24 rounded-lg border border-white/10 bg-[#111] px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-[#0a66c2]/40"
                     placeholder="—"
                   />
                 </label>
                 <label className="text-sm text-zinc-300">
-                  <span className="mb-1 block text-xs uppercase tracking-wide text-zinc-500">
+                  <span className="compose-duration-label mb-1 block text-xs uppercase tracking-wide text-zinc-500">
                     Months
                   </span>
                   <input
@@ -639,12 +639,12 @@ function ComposeV2Page() {
                       setMonthsInput(e.target.value);
                       if (e.target.value) setWeeksInput("");
                     }}
-                    className="w-24 rounded-lg border border-white/10 bg-[#111] px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-[#0a66c2]/40"
+                    className="compose-duration-input w-24 rounded-lg border border-white/10 bg-[#111] px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-[#0a66c2]/40"
                     placeholder="—"
                   />
                 </label>
               </div>
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="compose-duration-hint mt-2 text-xs text-zinc-500">
                 e.g. 8 weeks = 8 posts, one per week end | 3 months = 3 posts, one per month start
               </p>
 

@@ -4,11 +4,11 @@ import { CommentsPostsListSkeleton } from "@/components/list-skeletons";
 import type { PublishedPostRecord } from "@/lib/published-posts-store";
 import { useCallback, useEffect, useState } from "react";
 
-const BG = "#0f0f0f";
-const SURFACE = "#1a1a1a";
-const SURFACE2 = "#222";
+const BG = "var(--app-bg)";
+const SURFACE = "var(--app-surface)";
+const SURFACE2 = "var(--app-surface2)";
 const ACCENT = "#0a66c2";
-const BORDER = "rgba(255,255,255,0.08)";
+const BORDER = "var(--app-border)";
 type CommentRow = {
   id: string;
   author: string;
