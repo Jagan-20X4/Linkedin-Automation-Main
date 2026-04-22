@@ -2,8 +2,16 @@
 
 import { useSearchParams } from "next/navigation";
 import { ApprovalPostEditor } from "@/components/approval-post-editor";
+import { ApprovalsListSkeleton } from "@/components/list-skeletons";
 import { PostImagesGallery } from "@/components/post-images-gallery";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type NavId =
   | "dashboard"
@@ -112,6 +120,8 @@ function HomePage() {
   const [approvalsChatIdFilter, setApprovalsChatIdFilter] = useState<string | null>(
     null,
   );
+  /** After first load for this Approvals visit; silent polls do not flip this off. */
+  const [approvalsReady, setApprovalsReady] = useState(false);
 
   const queueCount = 12;
 
@@ -120,7 +130,8 @@ function HomePage() {
     return loading || !hasPost || localPublishDone;
   }, [loading, generated, localPublishDone]);
 
-  const loadScheduledApprovals = useCallback(async () => {
+  const loadScheduledApprovals = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? true;
     try {
       const res = await fetch("/api/approvals");
       const data = (await res.json()) as {
@@ -130,6 +141,8 @@ function HomePage() {
       if (data.approvals) setApprovals(data.approvals);
     } catch {
       /* ignore */
+    } finally {
+      if (!silent) setApprovalsReady(true);
     }
   }, []);
 
@@ -145,10 +158,14 @@ function HomePage() {
     [],
   );
 
+  useLayoutEffect(() => {
+    if (active === "approvals") setApprovalsReady(false);
+  }, [active]);
+
   useEffect(() => {
     if (active !== "approvals") return;
-    void loadScheduledApprovals();
-    const id = setInterval(() => void loadScheduledApprovals(), 60000);
+    void loadScheduledApprovals({ silent: false });
+    const id = setInterval(() => void loadScheduledApprovals({ silent: true }), 60000);
     return () => clearInterval(id);
   }, [active, loadScheduledApprovals]);
 
@@ -628,8 +645,10 @@ function HomePage() {
                 </button>
               ))}
             </div>
-            <ul className="mt-6 space-y-4">
-              {filteredApprovals.length === 0 ? (
+            <ul className="mt-6 space-y-4" aria-busy={!approvalsReady}>
+              {!approvalsReady ? (
+                <ApprovalsListSkeleton />
+              ) : filteredApprovals.length === 0 ? (
                 <li className="rounded-lg border border-white/10 bg-[#11141b] px-4 py-6 text-center text-sm text-zinc-500">
                   No items in this view.
                 </li>

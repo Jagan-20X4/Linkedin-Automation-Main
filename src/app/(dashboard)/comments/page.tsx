@@ -1,5 +1,6 @@
 "use client";
 
+import { CommentsPostsListSkeleton } from "@/components/list-skeletons";
 import type { PublishedPostRecord } from "@/lib/published-posts-store";
 import { useCallback, useEffect, useState } from "react";
 
@@ -248,7 +249,7 @@ export default function CommentsPage() {
             Published posts
           </div>
           {postsLoading ? (
-            <p className="p-4 text-sm text-zinc-500">Loading…</p>
+            <CommentsPostsListSkeleton />
           ) : posts.length === 0 ? (
             <p className="p-4 text-sm text-zinc-500">
               No posts yet. Publish a post from Compose V2 first.

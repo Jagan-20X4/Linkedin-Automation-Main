@@ -1,5 +1,6 @@
 "use client";
 
+import { ComposeV2ChatListSkeleton } from "@/components/list-skeletons";
 import { PostImagesGallery } from "@/components/post-images-gallery";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -502,7 +503,7 @@ function ComposeV2Page() {
             </div>
           </div>
           {loadingList ? (
-            <p className="text-xs text-zinc-500">Loading…</p>
+            <ComposeV2ChatListSkeleton />
           ) : allChats.length === 0 ? (
             <p className="text-xs text-zinc-500">No chats yet.</p>
           ) : (
