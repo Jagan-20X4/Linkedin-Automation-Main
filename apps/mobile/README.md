@@ -50,7 +50,7 @@ The dev server uses **HTTP**. If Android blocks requests, use `EXPO_PUBLIC_API_B
 
 - **Dashboard** — chat count, due/published approval counts  
 - **Compose** — `POST /api/generate-post`, optional image, `POST /api/linkedin/post`  
-- **Compose V2** — chat list, swipe/long-press delete, chat detail, weeks/months, `POST /api/v2/generate`, post images add/remove, copy, `POST /api/v2/publish-linkedin`  
+- **Compose V2** — chat list, swipe/long-press delete, chat detail, weeks/months, `POST /api/v2/generate`, post images add/remove, copy. Publishing is done from the Approvals tab.  
 - **Approvals** — filters, expand, edit/save content, images, approve/reject when **Due now** (same as web)  
 - **Comments** — published posts, LinkedIn comments, suggest reply, post reply  
 

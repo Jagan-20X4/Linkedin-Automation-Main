@@ -33,7 +33,6 @@ export default function ChatDetailScreen() {
   const [loadingChat, setLoadingChat] = useState(!isNew);
   const [generating, setGenerating] = useState(false);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
-  const [publishingIndex, setPublishingIndex] = useState<number | null>(null);
   const [imageBusyKey, setImageBusyKey] = useState<string | null>(null);
 
   const durationType = useMemo<"weeks" | "months" | null>(() => {
@@ -144,25 +143,6 @@ export default function ChatDetailScreen() {
     }
   }
 
-  async function publishPost(content: string, postIndex: number) {
-    const chatId = chat?.id ?? (isNew ? null : id);
-    if (!chatId) return;
-    setPublishingIndex(postIndex);
-    try {
-      await api.post("/api/v2/publish-linkedin", {
-        content,
-        chatId,
-        postIndex,
-      });
-      showOk("Published to LinkedIn.");
-      await loadChat();
-    } catch (e) {
-      showError(formatApiError(e));
-    } finally {
-      setPublishingIndex(null);
-    }
-  }
-
   function formatScheduled(iso: string) {
     try {
       return new Date(iso).toLocaleDateString(undefined, {
@@ -265,8 +245,6 @@ export default function ChatDetailScreen() {
               onToggle={() => togglePost(p.index)}
               formatScheduled={formatScheduled}
               onCopy={copyContent}
-              onPublish={publishPost}
-              publishing={publishingIndex === p.index}
               imageBusyKey={imageBusyKey}
               setImageBusyKey={setImageBusyKey}
               onImagesChanged={() => void loadChat()}
@@ -285,8 +263,6 @@ function PostCard({
   onToggle,
   formatScheduled,
   onCopy,
-  onPublish,
-  publishing,
   imageBusyKey,
   setImageBusyKey,
   onImagesChanged,
@@ -297,8 +273,6 @@ function PostCard({
   onToggle: () => void;
   formatScheduled: (iso: string) => string;
   onCopy: (t: string) => void;
-  onPublish: (content: string, postIndex: number) => void;
-  publishing: boolean;
   imageBusyKey: string | null;
   setImageBusyKey: (k: string | null) => void;
   onImagesChanged: () => void;
@@ -370,7 +344,7 @@ function PostCard({
             removeAt={removeAt}
           />
           <Text className="px-3 py-2 text-sm leading-relaxed text-primarytext">{post.content}</Text>
-          <View className="flex-row flex-wrap gap-2 border-t border-border px-3 py-3">
+          <View className="flex-row flex-wrap items-center gap-2 border-t border-border px-3 py-3">
             <Pressable
               onPress={() => void onCopy(post.content)}
               className="rounded-lg border border-border px-3 py-2 active:opacity-70"
@@ -378,17 +352,9 @@ function PostCard({
               <Text className="text-xs font-medium text-primarytext">Copy</Text>
             </Pressable>
             {post.status === "pending" ? (
-              <Pressable
-                onPress={() => void onPublish(post.content, post.index)}
-                disabled={publishing}
-                className="rounded-lg bg-accent px-3 py-2 active:opacity-80 disabled:opacity-40"
-              >
-                {publishing ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text className="text-xs font-semibold text-white">Publish</Text>
-                )}
-              </Pressable>
+              <Text className="text-[11px] italic text-secondarytext">
+                Publish from the Approvals tab.
+              </Text>
             ) : null}
           </View>
         </View>

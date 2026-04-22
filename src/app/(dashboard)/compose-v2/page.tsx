@@ -110,7 +110,6 @@ function ComposeV2Page() {
   const [loadingList, setLoadingList] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [publishingIndex, setPublishingIndex] = useState<number | null>(null);
   /** `${postIndex}-add` | `${postIndex}-del-${i}` while an image API call runs. */
   const [postImageBusyKey, setPostImageBusyKey] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -329,34 +328,6 @@ function ComposeV2Page() {
       setCopiedIndex(index);
     } catch {
       showToast("Could not copy.", "error");
-    }
-  }
-
-  async function publishPost(e: React.MouseEvent, content: string, postIndex: number) {
-    e.stopPropagation();
-    if (!activeChat) return;
-    setPublishingIndex(postIndex);
-    try {
-      const res = await fetch("/api/v2/publish-linkedin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          chatId: activeChat.id,
-          postIndex,
-        }),
-      });
-      const data = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || !data.success) {
-        throw new Error(typeof data.error === "string" ? data.error : "Publish failed");
-      }
-      showToast("Published to LinkedIn!", "success");
-      await loadChat(activeChat.id);
-      await loadChatList();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Publish failed", "error");
-    } finally {
-      setPublishingIndex(null);
     }
   }
 
@@ -704,7 +675,6 @@ function ComposeV2Page() {
                   <ul className="mt-6 space-y-3">
                     {sortedPosts.map((p) => {
                       const open = expanded.has(p.index);
-                      const publishing = publishingIndex === p.index;
                       const due = isDueNow(p);
                       const labelUpper = p.label.toUpperCase();
                       return (
@@ -760,29 +730,18 @@ function ComposeV2Page() {
                                   </span>
                                 )}
                               </div>
-                              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
+                              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+                                {p.status === "pending" && (
+                                  <span className="text-[11px] italic text-zinc-500">
+                                    Publish from the Approvals tab.
+                                  </span>
+                                )}
                                 <button
                                   type="button"
                                   onClick={(e) => void copyPost(e, p.content, p.index)}
                                   className="min-h-[44px] rounded-md border border-white/15 px-4 text-sm font-medium text-zinc-200 hover:bg-white/5 sm:min-h-0 sm:px-3 sm:py-1.5 sm:text-xs"
                                 >
                                   {copiedIndex === p.index ? "✓ Copied" : "Copy"}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={publishing || p.status === "published"}
-                                  onClick={(e) => void publishPost(e, p.content, p.index)}
-                                  className={`min-h-[44px] w-full rounded-md border-none px-4 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-3.5 sm:py-1.5 sm:text-xs ${
-                                    p.status === "published"
-                                      ? "bg-[#1db954]"
-                                      : "bg-[#0a66c2] hover:bg-[#1d8aff]"
-                                  }`}
-                                >
-                                  {publishing
-                                    ? "Publishing…"
-                                    : p.status === "published"
-                                      ? "✓ Published"
-                                      : "Publish to LinkedIn"}
                                 </button>
                               </div>
                             </div>
